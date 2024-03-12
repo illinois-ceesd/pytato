@@ -78,6 +78,8 @@ __doc__ = """
 
 .. autofunction:: get_num_call_sites
 
+.. autofunction:: collect_nodes_of_type
+
 .. autoclass:: DirectPredecessorsGetter
 
 .. autoclass:: TagCountMapper
@@ -770,6 +772,74 @@ class PytatoKeyBuilder(LoopyKeyBuilder):
         from pyopencl.array import Array
         assert isinstance(key, Array)
         self.rec(key_hash, key.get())
+
+# }}}
+
+
+# {{{ NodeCollector
+
+@optimize_mapper(drop_args=True, drop_kwargs=True, inline_get_cache_key=True)
+class NodeCollector(CachedWalkMapper[[]]):
+    """
+    Collects all nodes of a given type in a DAG.
+
+    .. attribute:: nodes
+
+       The collected nodes.
+    """
+
+    def __init__(
+            self,
+            node_type: type[NodeT],
+            traverse_functions: bool = True) -> None:
+        super().__init__()
+        self.node_type = node_type
+        self.traverse_functions = traverse_functions
+        self.nodes: set[NodeT] = set()
+
+    def get_cache_key(self, expr: ArrayOrNames) -> ArrayOrNames:
+        return expr
+
+    def get_function_definition_cache_key(
+            self, expr: FunctionDefinition) -> FunctionDefinition:
+        return expr
+
+    def clone_for_callee(
+            self: NodeCollector, function: FunctionDefinition) -> NodeCollector:
+        return type(self)(self.node_type)
+
+    def visit(self, expr: Any) -> bool:
+        return not isinstance(expr, FunctionDefinition) or self.traverse_functions
+
+    def post_visit(self, expr: Any) -> None:
+        if isinstance(expr, self.node_type):
+            self.nodes.add(expr)
+
+    def map_function_definition(self, expr: FunctionDefinition) -> None:
+        if not self.visit(expr):
+            return
+
+        new_mapper = self.clone_for_callee(expr)
+        for ret in expr.returns.values():
+            new_mapper(ret)
+
+        self.nodes |= new_mapper.nodes
+
+        self.post_visit(expr)
+
+
+def collect_nodes_of_type(
+        outputs: Array | DictOfNamedArrays,
+        node_type: type[NodeT]) -> set[NodeT]:
+    """Returns the nodes that are instances of *node_type* in DAG *outputs*."""
+
+    from pytato.codegen import normalize_outputs
+    outputs = normalize_outputs(outputs)
+
+    nc = NodeCollector(node_type)
+    nc(outputs)
+
+    return nc.nodes
 
 # }}}
 
