@@ -410,6 +410,39 @@ def get_num_nodes(outputs: Union[Array, DictOfNamedArrays]) -> int:
 
     return ncm.count
 
+
+@optimize_mapper(drop_args=True, drop_kwargs=True, inline_get_cache_key=True)
+class NodeTypeCountMapper(CachedWalkMapper):
+    """
+    Counts the number of nodes of a given type in a DAG.
+
+    .. attribute:: count
+
+       Dictionary mapping node types to number of nodes of that type.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.count = {}
+
+    def get_cache_key(self, expr: ArrayOrNames) -> int:
+        return id(expr)
+
+    def post_visit(self, expr: Any) -> None:
+        self.count[type(expr)] += 1
+
+
+def get_num_node_types(outputs: Union[Array, DictOfNamedArrays]) -> int:
+    """Returns the number of nodes of each given type in DAG *outputs*."""
+
+    from pytato.codegen import normalize_outputs
+    outputs = normalize_outputs(outputs)
+
+    ncm = NodeTypeCountMapper()
+    ncm(outputs)
+
+    return ncm.count
+
 # }}}
 
 
