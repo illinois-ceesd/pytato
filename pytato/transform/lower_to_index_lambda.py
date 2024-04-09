@@ -67,7 +67,7 @@ def _get_reshaped_indices(expr: Reshape) -> Tuple[ScalarExpression, ...]:
     # case 1: folded an axis into many axes
     if len(oldshape) < len(newshape):
         inewax = 0
-        for ioldax,oldax in enumerate(oldshape):
+        for ioldax, oldax in enumerate(oldshape):
             if oldax == newshape[inewax]:
                 inewax += 1
                 continue
@@ -75,17 +75,18 @@ def _get_reshaped_indices(expr: Reshape) -> Tuple[ScalarExpression, ...]:
             acc = 1
             newaxs = []
             while oldax != acc:
-                newaxs.append(newshape[inewax])
-                acc *= newaxs[-1]
+                newaxs.append(inewax)
+                acc *= newshape[inewax]
                 inewax += 1
-            oldax_to_newax[ioldax] = tuple(newaxs)
+
+            oldax_to_newax[tuple([ioldax])] = tuple(newaxs)
 
     # case 2: unfolded axes into a larger axis
     elif len(oldshape) > len(newshape):
         ioldax = 0
-        for inewax,newax in enumerate(newshape):
+        for inewax, newax in enumerate(newshape):
             if newax == oldshape[ioldax]:
-                inewax += 1
+                ioldax += 1
                 continue
 
             acc = 1
@@ -94,19 +95,20 @@ def _get_reshaped_indices(expr: Reshape) -> Tuple[ScalarExpression, ...]:
                 oldaxs.append(ioldax)
                 acc *= oldshape[ioldax]
                 ioldax += 1
-            oldax_to_newax[tuple(oldaxs)] = inewax
+
+            oldax_to_newax[tuple(oldaxs)] = tuple([inewax])
 
     # case 3: permuted axes
     else:
         oldax_to_newax = {
-            iax: newshape[iax]
+            tuple([iax]): tuple([newshape[iax]])
             for iax in range(len(oldshape))
             if oldshape[iax] != newshape[iax]
         }
 
     # }}}
 
-    # {{{ compute strides of changed axes
+    # {{{ compute strides
 
     oldstrides = [1]
     oldstride_axes = (reversed(oldshape[1:]) if order == "C" else oldshape[:-1])
@@ -142,11 +144,22 @@ def _get_reshaped_indices(expr: Reshape) -> Tuple[ScalarExpression, ...]:
 
     # }}}
 
-    flattened_idx = sum(prim.Variable(f"_{i}")*stride
-                        for i, stride in enumerate(newstrides))
+    # {{{ compute strides of changed axes
 
-    return tuple(((flattened_idx % sizetill) // stride)
-                 for stride, sizetill in zip(oldstrides, oldsizetills))
+    # }}}
+
+    # {{{ flatten changed axes
+
+    # }}}
+
+    flattened_idx = sum(prim.Variable(f"_{i}")*stride
+        for i, stride in enumerate(newstrides))
+
+    ret = tuple(
+        (flattened_idx % sizetill) // stride
+        for stride, sizetill in zip(oldstrides, oldsizetills))
+
+    return ret
 
 
 class ToIndexLambdaMixin:
