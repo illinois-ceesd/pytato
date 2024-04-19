@@ -150,9 +150,9 @@ Traceback functionality
 
 Please consider these undocumented and subject to change at any time.
 
-.. autofunction:: enable_traceback_tag
-.. class:: _PytatoFrameSummary
-.. class:: _PytatoStackSummary
+.. autofunction:: set_traceback_tag_enabled
+.. autoclass:: pytato.tags._PytatoFrameSummary
+.. autoclass:: pytato.tags._PytatoStackSummary
 
 Internal stuff that is only here because the documentation tool wants it
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -512,7 +512,7 @@ class Array(Taggable):
             self,
             slice_spec,
             tags=_get_default_tags(),
-            non_equality_tags=frozenset({_get_created_at_tag()}))
+            non_equality_tags=_get_created_at_tag())
 
     @property
     def ndim(self) -> int:
@@ -523,7 +523,8 @@ class Array(Taggable):
         return AxisPermutation(self,
                                tuple(range(self.ndim)[::-1]),
                                tags=_get_default_tags(),
-                               axes=_get_default_axes(self.ndim))
+                               axes=_get_default_axes(self.ndim),
+                               non_equality_tags=_get_created_at_tag())
 
     def __eq__(self, other: Any) -> bool:
         if self is other:
@@ -558,7 +559,7 @@ class Array(Taggable):
         # }}}
 
         tags = _get_default_tags()
-        non_equality_tags = frozenset({_get_created_at_tag()})
+        non_equality_tags = _get_created_at_tag()
 
         import pytato.utils as utils
         if reverse:
@@ -590,7 +591,7 @@ class Array(Taggable):
                 bindings=bindings,
                 tags=_get_default_tags(),
                 axes=_get_default_axes(self.ndim),
-                non_equality_tags=frozenset({_get_created_at_tag()}),
+                non_equality_tags=_get_created_at_tag(),
                 var_to_reduction_descr=immutabledict())
 
     # NOTE: Initializing the expression to "prim.Product(expr1, expr2)" is
@@ -1322,7 +1323,7 @@ def einsum(subscripts: str, *operands: Array,
                                          ),
                   redn_axis_to_redn_descr=immutabledict(redn_axis_to_redn_descr),
                   index_to_access_descr=index_to_descr,
-                  non_equality_tags=frozenset({_get_created_at_tag()}),
+                  non_equality_tags=_get_created_at_tag(),
                   )
 
 # }}}
@@ -1500,7 +1501,7 @@ class Reshape(IndexRemappingBase):
 
     if __debug__:
         def __attrs_post_init__(self) -> None:
-            assert self.non_equality_tags
+            # assert self.non_equality_tags
             super().__attrs_post_init__()
 
     @property
@@ -1792,90 +1793,16 @@ def _get_default_axes(ndim: int) -> AxesT:
     return tuple(Axis(frozenset()) for _ in range(ndim))
 
 
-@attrs.define(frozen=True, eq=True)
-class _PytatoFrameSummary:
-    """Class to store a single call frame."""
-    filename: str
-    lineno: Optional[int]
-    name: str
-    line: Optional[str]
-
-    def update_persistent_hash(self, key_hash: int, key_builder: Any) -> None:
-        key_builder.rec(key_hash,
-                (self.__class__.__module__, self.__class__.__qualname__))
-
-        from attrs import fields
-        # Fields are ordered consistently, so ordered hashing is OK.
-        #
-        # No need to dispatch to superclass: fields() automatically gives us
-        # fields from the entire class hierarchy.
-        for f in fields(self.__class__):
-            key_builder.rec(key_hash, getattr(self, f.name))
-
-    def short_str(self, maxlen: int = 100) -> str:
-        s = f"{self.filename}:{self.lineno}, in {self.name}():\n{self.line}"
-        s1, s2 = s.split("\n")
-        # Limit display to maxlen characters
-        s1 = "[...] " + s1[len(s1)-maxlen:] if len(s1) > maxlen else s1
-        s2 = s2[:maxlen] + " [...]" if len(s2) > maxlen else s2
-        return s1 + "\n" + s2
-
-    def __repr__(self) -> str:
-        return f"{self.filename}:{self.lineno}, in {self.name}(): {self.line}"
-
-
-@attrs.define(frozen=True, eq=True)
-class _PytatoStackSummary:
-    """Class to store a list of :class:`_PytatoFrameSummary` call frames."""
-    frames: Tuple[_PytatoFrameSummary, ...]
-
-    def to_stacksummary(self) -> StackSummary:
-        frames = [FrameSummary(f.filename, f.lineno, f.name, line=f.line)
-                  for f in self.frames]
-
-        return StackSummary.from_list(frames)
-
-    def update_persistent_hash(self, key_hash: int, key_builder: Any) -> None:
-        key_builder.rec(key_hash,
-                (self.__class__.__module__, self.__class__.__qualname__))
-
-        from attrs import fields
-        # Fields are ordered consistently, so ordered hashing is OK.
-        #
-        # No need to dispatch to superclass: fields() automatically gives us
-        # fields from the entire class hierarchy.
-        for f in fields(self.__class__):
-            key_builder.rec(key_hash, getattr(self, f.name))
-
-    def short_str(self, maxlen: int = 100) -> str:
-        from os.path import dirname
-
-        # Find the first file in the frames that is not in pytato's internal
-        # directories.
-        for frame in reversed(self.frames):
-            frame_dir = dirname(frame.filename)
-            if (not frame_dir.endswith("pytato")
-                    and not frame_dir.endswith("pytato/distributed")):
-                return frame.short_str(maxlen)
-
-        # Fallback in case we don't find any file that is not in the pytato/
-        # directory (should be unlikely).
-        return self.__repr__()
-
-    def __repr__(self) -> str:
-        return "\n  " + "\n  ".join([str(f) for f in self.frames])
-
-
 _ENABLE_TRACEBACK_TAG = False
 
 
-def enable_traceback_tag(enable: bool = True) -> None:
+def set_traceback_tag_enabled(enable: bool = True) -> None:
     """Enable or disable the traceback tag."""
     global _ENABLE_TRACEBACK_TAG
     _ENABLE_TRACEBACK_TAG = enable
 
 
-def _get_created_at_tag(stacklevel: int = 1) -> Optional[Tag]:
+def _get_created_at_tag(stacklevel: int = 1) -> FrozenSet[Tag]:
     """
     Get a :class:`CreatedAt` tag storing the stack trace of an array's creation.
 
@@ -1886,16 +1813,18 @@ def _get_created_at_tag(stacklevel: int = 1) -> Optional[Tag]:
     from pytato.tags import CreatedAt
 
     if not _ENABLE_TRACEBACK_TAG:
-        return None
+        return frozenset()
 
     # Drop the stack levels corresponding to extract_stack() and any additional
     # levels specified via stacklevel
     stack = traceback.extract_stack()[:-(1+stacklevel)]
 
+    from pytato.tags import _PytatoFrameSummary, _PytatoStackSummary
+
     frames = tuple(_PytatoFrameSummary(s.filename, s.lineno, s.name, s.line)
                        for s in stack)
 
-    return CreatedAt(_PytatoStackSummary(frames))
+    return frozenset({CreatedAt(_PytatoStackSummary(frames))})
 
 
 def _get_default_tags() -> FrozenSet[Tag]:
@@ -1961,7 +1890,7 @@ def roll(a: Array, shift: int, axis: Optional[int] = None) -> Array:
 
     return Roll(a, shift, axis,
                 tags=_get_default_tags(),
-                non_equality_tags=frozenset({_get_created_at_tag()}),
+                non_equality_tags=_get_created_at_tag(),
                 axes=_get_default_axes(a.ndim))
 
 
@@ -1984,7 +1913,7 @@ def transpose(a: Array, axes: Optional[Sequence[int]] = None) -> Array:
 
     return AxisPermutation(a, tuple(axes),
                            tags=_get_default_tags(),
-                           non_equality_tags=frozenset({_get_created_at_tag()}),
+                           non_equality_tags=_get_created_at_tag(),
                            axes=_get_default_axes(a.ndim))
 
 
@@ -2019,7 +1948,7 @@ def stack(arrays: Sequence[Array], axis: int = 0) -> Array:
 
     return Stack(tuple(arrays), axis,
                  tags=_get_default_tags(),
-                 non_equality_tags=frozenset({_get_created_at_tag()}),
+                 non_equality_tags=_get_created_at_tag(),
                  axes=_get_default_axes(arrays[0].ndim+1))
 
 
@@ -2055,7 +1984,7 @@ def concatenate(arrays: Sequence[Array], axis: int = 0) -> Array:
 
     return Concatenate(tuple(arrays), axis,
                        tags=_get_default_tags(),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),
+                       non_equality_tags=_get_created_at_tag(),
                        axes=_get_default_axes(arrays[0].ndim))
 
 
@@ -2115,7 +2044,7 @@ def reshape(array: Array, newshape: Union[int, Sequence[int]],
 
     return Reshape(array, tuple(newshape_explicit), order,
                    tags=_get_default_tags(),
-                   non_equality_tags=frozenset({_get_created_at_tag()}),
+                   non_equality_tags=_get_created_at_tag(),
                    axes=_get_default_axes(len(newshape_explicit)))
 
 
@@ -2161,7 +2090,7 @@ def make_placeholder(name: str,
 
     return Placeholder(name=name, shape=shape, dtype=dtype, axes=axes,
                        tags=(tags | _get_default_tags()),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),)
+                       non_equality_tags=_get_created_at_tag(),)
 
 
 def make_size_param(name: str,
@@ -2176,7 +2105,7 @@ def make_size_param(name: str,
     """
     _check_identifier(name, optional=False)
     return SizeParam(name, tags=(tags | _get_default_tags()),
-                     non_equality_tags=frozenset({_get_created_at_tag()}),)
+                     non_equality_tags=_get_created_at_tag(),)
 
 
 def make_data_wrapper(data: DataInterface,
@@ -2216,7 +2145,7 @@ def make_data_wrapper(data: DataInterface,
                          f" expected {len(shape)}, got {len(axes)}.")
 
     return DataWrapper(data, shape, axes=axes, tags=(tags | _get_default_tags()),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),)
+                       non_equality_tags=_get_created_at_tag(),)
 
 # }}}
 
@@ -2247,7 +2176,7 @@ def full(shape: ConvertibleToShape, fill_value: ScalarType,
     return IndexLambda(expr=fill_value, shape=shape, dtype=dtype,
                        bindings=immutabledict(),
                        tags=_get_default_tags(),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),
+                       non_equality_tags=_get_created_at_tag(),
                        axes=_get_default_axes(len(shape)),
                        var_to_reduction_descr=immutabledict())
 
@@ -2294,7 +2223,7 @@ def eye(N: int, M: Optional[int] = None, k: int = 0,  # noqa: N803
     return IndexLambda(expr=parse(f"1 if ((_1 - _0) == {k}) else 0"),
                        shape=(N, M), dtype=dtype, bindings=immutabledict({}),
                        tags=_get_default_tags(),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),
+                       non_equality_tags=_get_created_at_tag(),
                        axes=_get_default_axes(2),
                        var_to_reduction_descr=immutabledict())
 
@@ -2392,7 +2321,7 @@ def arange(*args: Any, **kwargs: Any) -> Array:
     return IndexLambda(expr=start + Variable("_0") * step,
                        shape=(size,), dtype=dtype, bindings=immutabledict(),
                        tags=_get_default_tags(),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),
+                       non_equality_tags=_get_created_at_tag(),
                        axes=_get_default_axes(1),
                        var_to_reduction_descr=immutabledict())
 
@@ -2407,11 +2336,10 @@ def _compare(x1: ArrayOrScalar, x2: ArrayOrScalar, which: str) -> Union[Array, b
     # type-ignored because 'broadcast_binary_op' returns Scalar, while
     # '_compare' returns a bool.
     return utils.broadcast_binary_op(x1, x2,
-                                     lambda x, y: prim.Comparison(x, which, y),
-                                     lambda x, y: np.dtype(np.bool_),
-                                     tags=_get_default_tags(),
-                                     non_equality_tags=frozenset({
-                                         _get_created_at_tag(stacklevel=2)}),
+                                lambda x, y: prim.Comparison(x, which, y),
+                                lambda x, y: np.dtype(np.bool_),
+                                tags=_get_default_tags(),
+                                non_equality_tags=_get_created_at_tag(stacklevel=2),
                                      )  # type: ignore[return-value]
 
 
@@ -2473,8 +2401,7 @@ def logical_or(x1: ArrayOrScalar, x2: ArrayOrScalar) -> Union[Array, bool]:
                                      lambda x, y: prim.LogicalOr((x, y)),
                                      lambda x, y: np.dtype(np.bool_),
                                      tags=_get_default_tags(),
-                                     non_equality_tags=frozenset({
-                                         _get_created_at_tag()}),
+                                     non_equality_tags=_get_created_at_tag(),
                                      )  # type: ignore[return-value]
 
 
@@ -2490,8 +2417,7 @@ def logical_and(x1: ArrayOrScalar, x2: ArrayOrScalar) -> Union[Array, bool]:
                                      lambda x, y: prim.LogicalAnd((x, y)),
                                      lambda x, y: np.dtype(np.bool_),
                                      tags=_get_default_tags(),
-                                     non_equality_tags=frozenset({
-                                         _get_created_at_tag()}),
+                                     non_equality_tags=_get_created_at_tag(),
                                      )  # type: ignore[return-value]
 
 
@@ -2513,7 +2439,7 @@ def logical_not(x: ArrayOrScalar) -> Union[Array, bool]:
                        dtype=np.dtype(np.bool_),
                        bindings={"_in0": x},
                        tags=_get_default_tags(),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),
+                       non_equality_tags=_get_created_at_tag(),
                        axes=_get_default_axes(len(x.shape)),
                        var_to_reduction_descr=immutabledict())
 
@@ -2570,7 +2496,7 @@ def where(condition: ArrayOrScalar,
             dtype=dtype,
             bindings=immutabledict(bindings),
             tags=_get_default_tags(),
-            non_equality_tags=frozenset({_get_created_at_tag()}),
+            non_equality_tags=_get_created_at_tag(),
             axes=_get_default_axes(len(result_shape)),
             var_to_reduction_descr=immutabledict())
 
@@ -2669,7 +2595,7 @@ def make_index_lambda(
                        shape=shape,
                        dtype=dtype,
                        tags=_get_default_tags(),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),
+                       non_equality_tags=_get_created_at_tag(),
                        axes=_get_default_axes(len(shape)),
                        var_to_reduction_descr=immutabledict
                         (processed_var_to_reduction_descr))
@@ -2756,7 +2682,7 @@ def broadcast_to(array: Array, shape: ShapeType) -> Array:
                        dtype=array.dtype,
                        bindings=immutabledict({"in": array}),
                        tags=_get_default_tags(),
-                       non_equality_tags=frozenset({_get_created_at_tag()}),
+                       non_equality_tags=_get_created_at_tag(),
                        axes=_get_default_axes(len(shape)),
                        var_to_reduction_descr=immutabledict())
 
@@ -2831,7 +2757,7 @@ def expand_dims(array: Array, axis: Union[Tuple[int, ...], int]) -> Array:
     return Reshape(array=array, newshape=tuple(new_shape), order="C",
                    tags=(_get_default_tags()
                          | {ExpandedDimsReshape(tuple(normalized_axis))}),
-                   non_equality_tags=frozenset({_get_created_at_tag()}),
+                   non_equality_tags=_get_created_at_tag(),
                    axes=_get_default_axes(len(new_shape)))
 
 # }}}
