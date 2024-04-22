@@ -70,6 +70,22 @@ if TYPE_CHECKING:
 GraphNodeT = TypeVar("GraphNodeT")
 
 
+# {{{ IgnoredForPropagationTag
+
+class AxisIgnoredForPropagationTag(UniqueTag):
+    """
+    Used to influence equality constraints when determining which axes tags
+    are allowed to propagate along.
+
+    The intended use case for this is to prevent the axes of a matrix used to,
+    for example, differentiate a tensor of DOF data from picking up on the
+    unique tags attached to the axes of the tensor.
+    """
+    pass
+
+# }}}
+
+
 # {{{ AxesTagsEquationCollector
 
 class AxesTagsEquationCollector(Mapper):
@@ -167,6 +183,8 @@ class AxesTagsEquationCollector(Mapper):
         Records equations for *ary*\'s axis tags of type :attr:`tag_t`.
         """
         for iaxis, axis in enumerate(ary.axes):
+            if axis.tags_of_type(AxisIgnoredForPropagationTag):
+                continue
             lhs_var = self.get_var_for_axis(ary, iaxis)
             for tag in axis.tags_of_type(self.tag_t):
                 rhs_var = self.get_var_for_tag(tag)
@@ -632,22 +650,6 @@ class AxisTagAttacher(CopyMapper):
 # }}}
 
 
-# {{{ IgnoredForPropagationTag
-
-class AxisIgnoredForPropagationTag(UniqueTag):
-    """
-    Used to influence equality constraints when determining which axes tags
-    are allowed to propagate along.
-
-    The intended use case for this is to prevent the axes of a matrix used to,
-    for example, differentiate a tensor of DOF data from picking up on the
-    unique tags attached to the axes of the tensor.
-    """
-    pass
-
-# }}}
-
-
 def unify_axes_tags(
         expr: ArrayOrNames,
         *,
@@ -694,9 +696,6 @@ def unify_axes_tags(
     )
 
     for tag, var in equations_collector.known_tag_to_var.items():
-        if isinstance(tag, AxisIgnoredForPropagationTag):
-            continue
-
         reachable_nodes = get_reachable_nodes(propagation_graph, var)
         for reachable_var in (reachable_nodes - known_tag_vars):
                 axis_to_solved_tags.setdefault(
