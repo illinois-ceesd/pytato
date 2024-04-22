@@ -673,26 +673,21 @@ def unify_axes_tags(
     known_tag_vars = frozenset(equations_collector.known_tag_to_var.values())
     axis_to_solved_tags: Dict[Tuple[Array, int], Set[Tag]] = {}
 
-    if IgnoredForPropagationTag in equations_collector.known_tag_to_var.keys():
-        pu.db
-
     propagation_graph = get_propagation_graph_from_constraints(
         equations_collector.equations,
         equations_collector.known_tag_to_var
     )
 
     for tag, var in equations_collector.known_tag_to_var.items():
+        if isinstance(tag, IgnoredForPropagationTag):
+            continue
 
         reachable_nodes = get_reachable_nodes(propagation_graph, var)
         for reachable_var in (reachable_nodes - known_tag_vars):
-
-            if not isinstance(tag, IgnoredForPropagationTag):
                 axis_to_solved_tags.setdefault(
                     equations_collector.axis_to_var.inverse[reachable_var],
                     set()
                 ).add(tag)
-            else:
-                pu.db
 
     return AxisTagAttacher(axis_to_solved_tags,
                            tag_corresponding_redn_descr=unify_redn_descrs,
