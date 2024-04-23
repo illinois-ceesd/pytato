@@ -35,7 +35,7 @@ THE SOFTWARE.
 """
 
 
-from typing import (TYPE_CHECKING, Type, Set, Tuple, List, Dict, FrozenSet,
+from typing import (TYPE_CHECKING, Type, Set, Tuple, List, Dict,
                     Mapping, Iterable, Any, TypeVar, cast)
 from bidict import bidict
 from pytato.scalar_expr import SCALAR_CLASSES
