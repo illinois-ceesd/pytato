@@ -600,10 +600,15 @@ class AxisTagAttacher(CopyMapper):
             except KeyError:
                 expr_copy = Mapper.rec(self, expr)
                 assert expr_copy.ndim == expr.ndim
-
                 for iaxis in range(expr.ndim):
+                    axis_tags = self.axis_to_tags.get((expr, iaxis), [])
+                    if len(axis_tags) == 0:
+                        print("--------------------------------------------------------\n"
+                              f"Inferring axis({iaxis})_tag of array type {type(expr)}.\n"
+                              f"TraceBack:\n{expr.non_equality_tags=}\n"
+                              "--------------------------------------------------------")
                     expr_copy = expr_copy.with_tagged_axis(
-                        iaxis, self.axis_to_tags.get((expr, iaxis), []))
+                        iaxis, axis_tags)
 
                 # {{{ tag reduction descrs
 
