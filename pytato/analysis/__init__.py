@@ -80,6 +80,8 @@ __doc__ = """
 
 .. autofunction:: collect_nodes_of_type
 
+.. autofunction:: collect_materialized_nodes
+
 .. autoclass:: DirectPredecessorsGetter
 
 .. autoclass:: TagCountMapper
@@ -844,6 +846,20 @@ def collect_nodes_of_type(
 
     return frozenset(nc.nodes)
 
+
+def collect_materialized_nodes(
+        outputs: Array | DictOfNamedArrays) -> frozenset[NodeT]:
+    from pytato.codegen import normalize_outputs
+    outputs = normalize_outputs(outputs)
+
+    def collect_func(expr: NodeT) -> bool:
+        from pytato.tags import ImplStored
+        return bool(expr.tags_of_type(ImplStored))
+
+    nc = NodeCollector(collect_func)
+    nc(outputs)
+
+    return frozenset(nc.nodes)
 
 # }}}
 
