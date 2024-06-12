@@ -35,7 +35,7 @@ THE SOFTWARE.
 """
 
 
-from typing import (TYPE_CHECKING, Type, Set, Tuple, List, Dict, FrozenSet,
+from typing import (TYPE_CHECKING, Type, Set, Tuple, List, Dict,
                     Mapping, Iterable, Any, TypeVar, cast)
 from bidict import bidict
 from pytato.scalar_expr import SCALAR_CLASSES
@@ -58,7 +58,7 @@ from pytato.raising import (index_lambda_to_high_level_op,
 from pytato.diagnostic import UnknownIndexLambdaExpr
 
 from pytools import UniqueNameGenerator
-from pytools.tag import Tag
+from pytools.tag import Tag, UniqueTag
 import logging
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,22 @@ if TYPE_CHECKING:
 
 
 GraphNodeT = TypeVar("GraphNodeT")
+
+
+# {{{ IgnoredForPropagationTag
+
+class AxisIgnoredForPropagationTag(UniqueTag):
+    """
+    Used to influence equality constraints when determining which axes tags
+    are allowed to propagate along.
+
+    The intended use case for this is to prevent the axes of a matrix used to,
+    for example, differentiate a tensor of DOF data from picking up on the
+    unique tags attached to the axes of the tensor.
+    """
+    pass
+
+# }}}
 
 
 # {{{ AxesTagsEquationCollector
@@ -167,6 +183,8 @@ class AxesTagsEquationCollector(Mapper):
         Records equations for *ary*\'s axis tags of type :attr:`tag_t`.
         """
         for iaxis, axis in enumerate(ary.axes):
+            if axis.tags_of_type(AxisIgnoredForPropagationTag):
+                continue
             lhs_var = self.get_var_for_axis(ary, iaxis)
             for tag in axis.tags_of_type(self.tag_t):
                 rhs_var = self.get_var_for_tag(tag)
@@ -492,11 +510,12 @@ class AxesTagsEquationCollector(Mapper):
             descr_to_var[EinsumElementwiseAxis(iaxis)] = self.get_var_for_axis(expr,
                                                                                iaxis)
 
-        for access_descrs, arg in zip(expr.access_descriptors,
-                                      expr.args):
+        for access_descrs, arg in zip(expr.access_descriptors, expr.args):
             for iarg_axis, descr in enumerate(access_descrs):
-                in_tag_var = self.get_var_for_axis(arg, iarg_axis)
+                if arg.axes[iarg_axis].tags_of_type(AxisIgnoredForPropagationTag):
+                    continue
 
+                in_tag_var = self.get_var_for_axis(arg, iarg_axis)
                 if descr in descr_to_var:
                     self.record_equation(descr_to_var[descr], in_tag_var)
                 else:
@@ -556,38 +575,7 @@ class AxesTagsEquationCollector(Mapper):
 # }}}
 
 
-def _get_propagation_graph_from_constraints(
-        equations: List[Tuple[str, str]]) -> Mapping[str, FrozenSet[str]]:
-    from immutabledict import immutabledict
-    propagation_graph: Dict[str, Set[str]] = {}
-    for lhs, rhs in equations:
-        assert lhs != rhs
-        propagation_graph.setdefault(lhs, set()).add(rhs)
-        propagation_graph.setdefault(rhs, set()).add(lhs)
-
-    return immutabledict({k: frozenset(v)
-                           for k, v in propagation_graph.items()})
-
-
-def get_reachable_nodes(undirected_graph: Mapping[GraphNodeT, Iterable[GraphNodeT]],
-                        source_node: GraphNodeT) -> FrozenSet[GraphNodeT]:
-    """
-    Returns a :class:`frozenset` of all nodes in *undirected_graph* that are
-    reachable from *source_node*.
-    """
-    nodes_visited: Set[GraphNodeT] = set()
-    nodes_to_visit = {source_node}
-    while nodes_to_visit:
-        current_node = nodes_to_visit.pop()
-        nodes_visited.add(current_node)
-
-        neighbors = undirected_graph[current_node]
-        nodes_to_visit.update({node
-                               for node in neighbors
-                               if node not in nodes_visited})
-
-    return frozenset(nodes_visited)
-
+# {{{ AxisTagAttacher
 
 class AxisTagAttacher(CopyMapper):
     """
@@ -614,12 +602,8 @@ class AxisTagAttacher(CopyMapper):
                 assert expr_copy.ndim == expr.ndim
 
                 for iaxis in range(expr.ndim):
-                    axis_tags = self.axis_to_tags.get((expr, iaxis), [])
-                    if len(axis_tags) == 0:
-                        print(f"failed to infer axis {iaxis} of array of type {type(expr)}.")
-                        print(f"{expr.non_equality_tags=}")
                     expr_copy = expr_copy.with_tagged_axis(
-                        iaxis, axis_tags)
+                        iaxis, self.axis_to_tags.get((expr, iaxis), []))
 
                 # {{{ tag reduction descrs
 
@@ -663,6 +647,8 @@ class AxisTagAttacher(CopyMapper):
         assert isinstance(result, (Array, AbstractResultWithNamedArrays))
         return result
 
+# }}}
+
 
 def unify_axes_tags(
         expr: ArrayOrNames,
@@ -697,19 +683,25 @@ def unify_axes_tags(
     # Defn. A Propagation graph is a graph where nodes denote variables and an
     # edge between 2 nodes denotes an equality criterion.
 
-    propagation_graph = _get_propagation_graph_from_constraints(
-        equations_collector.equations)
+    from pytools.graph import (
+        get_propagation_graph_from_constraints,
+        get_reachable_nodes
+    )
 
     known_tag_vars = frozenset(equations_collector.known_tag_to_var.values())
     axis_to_solved_tags: Dict[Tuple[Array, int], Set[Tag]] = {}
 
+    propagation_graph = get_propagation_graph_from_constraints(
+        equations_collector.equations,
+    )
+
     for tag, var in equations_collector.known_tag_to_var.items():
-        for reachable_var in (get_reachable_nodes(propagation_graph, var)
-                              - known_tag_vars):
-            axis_to_solved_tags.setdefault(
-                equations_collector.axis_to_var.inverse[reachable_var],
-                set()
-            ).add(tag)
+        reachable_nodes = get_reachable_nodes(propagation_graph, var)
+        for reachable_var in (reachable_nodes - known_tag_vars):
+                axis_to_solved_tags.setdefault(
+                    equations_collector.axis_to_var.inverse[reachable_var],
+                    set()
+                ).add(tag)
 
     return AxisTagAttacher(axis_to_solved_tags,
                            tag_corresponding_redn_descr=unify_redn_descrs,
