@@ -59,6 +59,9 @@ if TYPE_CHECKING:
     from pytato.distributed.nodes import DistributedRecv, DistributedSendRefHolder
     from pytato.loopy import LoopyCall
 
+
+NodeT = Array | FunctionDefinition
+
 __doc__ = """
 .. currentmodule:: pytato.analysis
 
@@ -455,7 +458,7 @@ class NodeCountMapper(CachedWalkMapper[[]]):
         super().__init__(_visited_functions=_visited_functions)
 
         from collections import defaultdict
-        self.expr_type_counts: dict[type[Any], int] = defaultdict(int)
+        self.expr_type_counts: dict[type[NodeT], int] = defaultdict(int)
         self.count_duplicates = count_duplicates
 
     def get_cache_key(self, expr: ArrayOrNames) -> int | ArrayOrNames:
@@ -473,14 +476,14 @@ class NodeCountMapper(CachedWalkMapper[[]]):
             _visited_functions=self._visited_functions)
 
     def post_visit(self, expr: Any) -> None:
-        if not isinstance(expr, DictOfNamedArrays):
+        if isinstance(expr, NodeT):
             self.expr_type_counts[type(expr)] += 1
 
 
 def get_node_type_counts(
         outputs: Array | DictOfNamedArrays,
         count_duplicates: bool = False
-        ) -> dict[type[Any], int]:
+        ) -> dict[type[NodeT], int]:
     """
     Returns a dictionary mapping node types to node count for that type
     in DAG *outputs*.
@@ -541,7 +544,7 @@ class NodeMultiplicityMapper(CachedWalkMapper[[]]):
         super().__init__(_visited_functions=_visited_functions)
 
         from collections import defaultdict
-        self.expr_multiplicity_counts: dict[Array, int] = defaultdict(int)
+        self.expr_multiplicity_counts: dict[NodeT, int] = defaultdict(int)
 
     def get_cache_key(self, expr: ArrayOrNames) -> int:
         # Returns each node, including nodes that are duplicates
@@ -552,12 +555,12 @@ class NodeMultiplicityMapper(CachedWalkMapper[[]]):
         return id(expr)
 
     def post_visit(self, expr: Any) -> None:
-        if not isinstance(expr, DictOfNamedArrays):
+        if isinstance(expr, NodeT):
             self.expr_multiplicity_counts[expr] += 1
 
 
 def get_node_multiplicities(
-        outputs: Array | DictOfNamedArrays) -> dict[Array, int]:
+        outputs: Array | DictOfNamedArrays) -> dict[NodeT, int]:
     """
     Returns the multiplicity per `expr`.
     """
