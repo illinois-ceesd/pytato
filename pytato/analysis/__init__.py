@@ -539,6 +539,31 @@ def get_num_nodes(
 
     return sum(ncm.expr_type_counts.values())
 
+
+def get_num_node_instances(
+        outputs: Array | DictOfNamedArrays,
+        node_type: type[NodeT],
+        strict: bool = True,
+        count_duplicates: bool = False) -> int:
+    """
+    Returns the number of nodes in DAG *outputs* that have type *node_type* (if
+    *strict* is `True`) or are instances of *node_type* (if *strict* is `False`).
+    """
+
+    from pytato.codegen import normalize_outputs
+    outputs = normalize_outputs(outputs)
+
+    ncm = NodeCountMapper(count_duplicates)
+    ncm(outputs)
+
+    if strict:
+        return ncm.expr_type_counts[node_type]
+    else:
+        return sum(
+            count
+            for other_node_type, count in ncm.expr_type_counts.items()
+            if isinstance(other_node_type, node_type))
+
 # }}}
 
 
