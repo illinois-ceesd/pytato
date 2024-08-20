@@ -60,7 +60,8 @@ if TYPE_CHECKING:
     from pytato.loopy import LoopyCall
 
 
-NodeT = Array | FunctionDefinition
+# FIXME: Think about whether this makes sense
+NodeT = Array | FunctionDefinition | Call
 
 __doc__ = """
 .. currentmodule:: pytato.analysis
@@ -479,6 +480,19 @@ class NodeCountMapper(CachedWalkMapper[[]]):
         if isinstance(expr, NodeT):
             self.expr_type_counts[type(expr)] += 1
 
+    def map_function_definition(self, expr: FunctionDefinition) -> None:
+        if not self.visit(expr):
+            return
+
+        new_mapper = self.clone_for_callee(expr)
+        for ret in expr.returns.values():
+            new_mapper(ret)
+
+        for node_type, count in new_mapper.expr_type_counts.items():
+            self.expr_type_counts[node_type] += count
+
+        self.post_visit(expr)
+
 
 def get_node_type_counts(
         outputs: Array | DictOfNamedArrays,
@@ -540,8 +554,13 @@ class NodeMultiplicityMapper(CachedWalkMapper[[]]):
 
     .. autoattribute:: expr_multiplicity_counts
     """
-    def __init__(self, _visited_functions: set[Any] | None = None) -> None:
+    def __init__(
+            self,
+            traverse_functions: bool = True,
+            _visited_functions: set[Any] | None = None) -> None:
         super().__init__(_visited_functions=_visited_functions)
+
+        self.traverse_functions = traverse_functions
 
         from collections import defaultdict
         self.expr_multiplicity_counts: dict[NodeT, int] = defaultdict(int)
@@ -554,9 +573,25 @@ class NodeMultiplicityMapper(CachedWalkMapper[[]]):
         # Returns each node, including nodes that are duplicates
         return id(expr)
 
+    def visit(self, expr: Any) -> bool:
+        return not isinstance(expr, FunctionDefinition) or self.traverse_functions
+
     def post_visit(self, expr: Any) -> None:
         if isinstance(expr, NodeT):
             self.expr_multiplicity_counts[expr] += 1
+
+    def map_function_definition(self, expr: FunctionDefinition) -> None:
+        if not self.visit(expr):
+            return
+
+        new_mapper = self.clone_for_callee(expr)
+        for ret in expr.returns.values():
+            new_mapper(ret)
+
+        for subexpr, count in new_mapper.expr_multiplicity_counts.items():
+            self.expr_multiplicity_counts[subexpr] += count
+
+        self.post_visit(expr)
 
 
 def get_node_multiplicities(
@@ -602,8 +637,8 @@ class CallSiteCountMapper(CachedWalkMapper[[]]):
             return
 
         new_mapper = self.clone_for_callee(expr)
-        for subexpr in expr.returns.values():
-            new_mapper(subexpr)
+        for ret in expr.returns.values():
+            new_mapper(ret)
         self.count += new_mapper.count
 
         self.post_visit(expr)
