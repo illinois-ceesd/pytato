@@ -661,6 +661,10 @@ class CallSiteCountMapper(CachedWalkMapper[[]]):
     def get_function_definition_cache_key(self, expr: FunctionDefinition) -> int:
         return id(expr)
 
+    def post_visit(self, expr: Any) -> None:
+        if isinstance(expr, Call):
+            self.count += 1
+
     def map_function_definition(self, expr: FunctionDefinition) -> None:
         if not self.visit(expr):
             return
@@ -671,10 +675,6 @@ class CallSiteCountMapper(CachedWalkMapper[[]]):
         self.count += new_mapper.count
 
         self.post_visit(expr)
-
-    def post_visit(self, expr: Any) -> None:
-        if isinstance(expr, Call):
-            self.count += 1
 
 
 def get_num_call_sites(outputs: Array | DictOfNamedArrays) -> int:
