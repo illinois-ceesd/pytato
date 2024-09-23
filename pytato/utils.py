@@ -215,9 +215,18 @@ def update_bindings_and_get_broadcasted_expr(arr: ArrayOrScalar,
 
 def broadcast_binary_op(a1: ArrayOrScalar, a2: ArrayOrScalar,
                         op: Callable[[ScalarExpression, ScalarExpression], ScalarExpression],  # noqa:E501
-                        get_result_type: Callable[[DtypeOrScalar, DtypeOrScalar], np.dtype[Any]],  # noqa:E501
-                        tags: FrozenSet[Tag],
-                        non_equality_tags: FrozenSet[Tag],
+# <<<<<<< HEAD
+#                         get_result_type: Callable[[DtypeOrScalar, DtypeOrScalar], np.dtype[Any]],  # noqa:E501
+#                        tags: FrozenSet[Tag],
+#                        non_equality_tags: FrozenSet[Tag],
+# =======
+                        get_result_type: Callable[[ArrayOrScalar, ArrayOrScalar], np.dtype[Any]],  # noqa:E501
+                        *,
+                        tags: frozenset[Tag],
+                        non_equality_tags: frozenset[Tag],
+                        cast_to_result_dtype: bool,
+                        is_pow: bool,
+# >>>>>>> main
                         ) -> ArrayOrScalar:
     from pytato.array import _get_default_axes
 
@@ -242,6 +251,38 @@ def broadcast_binary_op(a1: ArrayOrScalar, a2: ArrayOrScalar,
     expr2 = update_bindings_and_get_broadcasted_expr(a2, "_in1", bindings,
                                                      result_shape)
 
+# <<<<<<< HEAD
+# =======
+    def cast_to_result_type(
+                array: ArrayOrScalar,
+                expr: ScalarExpression
+            ) -> ScalarExpression:
+        if ((isinstance(array, Array) or isinstance(array, np.generic))
+                and array.dtype != result_dtype):
+            # Loopy's type casts don't like casting to bool
+            assert result_dtype != np.bool_
+
+            # See https://github.com/inducer/pytato/issues/542
+            # on why pow() + integers is not typecast to float or complex.
+            if not (is_pow
+                    and np.issubdtype(array.dtype, np.integer)
+                    and not np.issubdtype(result_dtype, np.integer)):
+                expr = TypeCast(result_dtype, expr)
+        elif isinstance(expr, SCALAR_CLASSES):
+            # See https://github.com/inducer/pytato/issues/542
+            # on why pow() + integers is not typecast to float or complex.
+            if not (is_pow
+                    and np.issubdtype(type(expr), np.integer)
+                    and not np.issubdtype(result_dtype, np.integer)):
+                expr = result_dtype.type(expr)
+
+        return expr
+
+    if cast_to_result_dtype:
+        expr1 = cast_to_result_type(a1, expr1)
+        expr2 = cast_to_result_type(a2, expr2)
+
+# >>>>>>> main
     return IndexLambda(expr=op(expr1, expr2),
                        shape=result_shape,
                        dtype=result_dtype,
