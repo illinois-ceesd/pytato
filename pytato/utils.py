@@ -215,18 +215,12 @@ def update_bindings_and_get_broadcasted_expr(arr: ArrayOrScalar,
 
 def broadcast_binary_op(a1: ArrayOrScalar, a2: ArrayOrScalar,
                         op: Callable[[ScalarExpression, ScalarExpression], ScalarExpression],  # noqa:E501
-# <<<<<<< HEAD
-#                         get_result_type: Callable[[DtypeOrScalar, DtypeOrScalar], np.dtype[Any]],  # noqa:E501
-#                        tags: FrozenSet[Tag],
-#                        non_equality_tags: FrozenSet[Tag],
-# =======
                         get_result_type: Callable[[ArrayOrScalar, ArrayOrScalar], np.dtype[Any]],  # noqa:E501
                         *,
                         tags: frozenset[Tag],
                         non_equality_tags: frozenset[Tag],
                         cast_to_result_dtype: bool,
                         is_pow: bool,
-# >>>>>>> main
                         ) -> ArrayOrScalar:
     from pytato.array import _get_default_axes
 
@@ -251,8 +245,6 @@ def broadcast_binary_op(a1: ArrayOrScalar, a2: ArrayOrScalar,
     expr2 = update_bindings_and_get_broadcasted_expr(a2, "_in1", bindings,
                                                      result_shape)
 
-# <<<<<<< HEAD
-# =======
     def cast_to_result_type(
                 array: ArrayOrScalar,
                 expr: ScalarExpression
@@ -282,7 +274,6 @@ def broadcast_binary_op(a1: ArrayOrScalar, a2: ArrayOrScalar,
         expr1 = cast_to_result_type(a1, expr1)
         expr2 = cast_to_result_type(a2, expr2)
 
-# >>>>>>> main
     return IndexLambda(expr=op(expr1, expr2),
                        shape=result_shape,
                        dtype=result_dtype,

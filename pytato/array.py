@@ -577,13 +577,6 @@ class Array(Taggable):
 
     __rmatmul__ = partialmethod(__matmul__, reverse=True)
 
-# <<<<<<< HEAD
-#     def _binary_op(self,
-#             op: Callable[[ScalarExpression, ScalarExpression], ScalarExpression],
-#             other: ArrayOrScalar,
-#             get_result_type: Callable[[DtypeOrScalar, DtypeOrScalar], np.dtype[Any]] = _np_result_type,  # noqa
-#            reverse: bool = False) -> Array:
-# =======
     def _binary_op(
                 self,
                 op: Callable[[ScalarExpression, ScalarExpression],
@@ -596,7 +589,6 @@ class Array(Taggable):
                 cast_to_result_dtype: bool = True,
                 is_pow: bool = False,
             ) -> Array:
-# >>>>>>> main
 
         # {{{ sanity checks
 
@@ -610,17 +602,6 @@ class Array(Taggable):
 
         import pytato.utils as utils
         if reverse:
-# <<<<<<< HEAD
-#             result = utils.broadcast_binary_op(other, self, op,
-#                                               get_result_type,
-#                                               tags=tags,
-#                                               non_equality_tags=non_equality_tags)
-#        else:
-#            result = utils.broadcast_binary_op(self, other, op,
-#                                               get_result_type,
-#                                               tags=tags,
-#                                               non_equality_tags=non_equality_tags)
-# =======
             result = utils.broadcast_binary_op(
                          other, self, op,
                          get_result_type,
@@ -636,7 +617,6 @@ class Array(Taggable):
                          non_equality_tags=non_equality_tags,
                          cast_to_result_dtype=cast_to_result_dtype,
                          is_pow=is_pow)
-# >>>>>>> main
 
         assert isinstance(result, Array)
         return result
@@ -688,13 +668,8 @@ class Array(Taggable):
     __rtruediv__ = partialmethod(_binary_op, prim.Quotient,
             get_result_type=_truediv_result_type, reverse=True)
 
-# <<<<<<< HEAD
-#    __pow__ = partialmethod(_binary_op, prim.Power)
-#    __rpow__ = partialmethod(_binary_op, prim.Power, reverse=True)
-#=======
     __pow__ = partialmethod(_binary_op, operator.pow, is_pow=True)
     __rpow__ = partialmethod(_binary_op, operator.pow, reverse=True, is_pow=True)
-# >>>>>>> main
 
     __neg__ = partialmethod(_unary_op, operator.neg)
 
@@ -2443,14 +2418,6 @@ def _compare(x1: ArrayOrScalar, x2: ArrayOrScalar, which: str) -> Array | bool:
     import pytato.utils as utils
     # type-ignored because 'broadcast_binary_op' returns Scalar, while
     # '_compare' returns a bool.
-# <<<<<<< HEAD
-#     return utils.broadcast_binary_op(x1, x2,
-#                                 lambda x, y: prim.Comparison(x, which, y),
-#                                 lambda x, y: np.dtype(np.bool_),
-#                                 tags=_get_default_tags(),
-#                                 non_equality_tags=_get_created_at_tag(stacklevel=2),
-#                                      )  # type: ignore[return-value]
-# =======
     return utils.broadcast_binary_op(
                             x1, x2,
                             lambda x, y: prim.Comparison(x, which, y),
@@ -2460,7 +2427,6 @@ def _compare(x1: ArrayOrScalar, x2: ArrayOrScalar, which: str) -> Array | bool:
                             cast_to_result_dtype=False,
                             is_pow=False,
                         )  # type: ignore[return-value]
-# >>>>>>> main
 
 
 def equal(x1: ArrayOrScalar, x2: ArrayOrScalar) -> Array | bool:
@@ -2522,11 +2488,8 @@ def logical_or(x1: ArrayOrScalar, x2: ArrayOrScalar) -> Array | bool:
                                      lambda x, y: np.dtype(np.bool_),
                                      tags=_get_default_tags(),
                                      non_equality_tags=_get_created_at_tag(),
-# <<<<<<< HEAD
-# =======
                                      cast_to_result_dtype=False,
                                      is_pow=False,
-# >>>>>>> main
                                      )  # type: ignore[return-value]
 
 
@@ -2543,11 +2506,8 @@ def logical_and(x1: ArrayOrScalar, x2: ArrayOrScalar) -> Array | bool:
                                      lambda x, y: np.dtype(np.bool_),
                                      tags=_get_default_tags(),
                                      non_equality_tags=_get_created_at_tag(),
-# <<<<<<< HEAD
-# =======
                                      cast_to_result_dtype=False,
                                      is_pow=False,
-# >>>>>>> main
                                      )  # type: ignore[return-value]
 
 
