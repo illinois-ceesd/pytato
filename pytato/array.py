@@ -586,11 +586,12 @@ class Array(Taggable):
 # =======
     def _binary_op(
                 self,
-                op: Callable[[ScalarExpression, ScalarExpression], ScalarExpression],
+                op: Callable[[ScalarExpression, ScalarExpression],
+                             ScalarExpression],
                 other: ArrayOrScalar,
                 get_result_type: Callable[
                         [ArrayOrScalar, ArrayOrScalar],
-                        np.dtype[Any]] = _np_result_dtype,
+                        np.dtype[Any]] = _np_result_type,
                 reverse: bool = False,
                 cast_to_result_dtype: bool = True,
                 is_pow: bool = False,
