@@ -458,9 +458,12 @@ class NodeCountMapper(CachedWalkMapper[[]]):
     def __init__(
             self,
             count_duplicates: bool = False,
+            traverse_functions: bool = True,
             _visited_functions: set[Any] | None = None,
             ) -> None:
         super().__init__(_visited_functions=_visited_functions)
+
+        self.traverse_functions = traverse_functions
 
         from collections import defaultdict
         self.expr_type_counts: dict[type[NodeT], int] = defaultdict(int)
@@ -478,7 +481,11 @@ class NodeCountMapper(CachedWalkMapper[[]]):
     def clone_for_callee(self, function: FunctionDefinition) -> Self:
         return type(self)(
             count_duplicates=self.count_duplicates,
+            traverse_functions=self.traverse_functions,
             _visited_functions=self._visited_functions)
+
+    def visit(self, expr: Any) -> bool:
+        return not isinstance(expr, FunctionDefinition) or self.traverse_functions
 
     def post_visit(self, expr: Any) -> None:
         if isinstance(expr, NodeT):
@@ -520,7 +527,8 @@ def get_node_type_counts(
 
 def get_num_nodes(
         outputs: Array | DictOfNamedArrays,
-        count_duplicates: bool | None = None
+        count_duplicates: bool | None = None,
+        traverse_functions: bool = True
         ) -> int:
     """
     Returns the number of nodes in DAG *outputs*.
@@ -538,7 +546,9 @@ def get_num_nodes(
     from pytato.codegen import normalize_outputs
     outputs = normalize_outputs(outputs)
 
-    ncm = NodeCountMapper(count_duplicates)
+    ncm = NodeCountMapper(
+        count_duplicates=count_duplicates,
+        traverse_functions=traverse_functions)
     ncm(outputs)
 
     return sum(ncm.expr_type_counts.values())
