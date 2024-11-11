@@ -50,6 +50,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Never,
+    Union,
     cast,
 )
 
