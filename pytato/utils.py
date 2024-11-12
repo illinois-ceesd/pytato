@@ -44,6 +44,7 @@ from pytato.transform import Mapper
 from pytools.tag import Tag
 from immutabledict import immutabledict
 import numpy as np
+import islpy as isl
 
 import pymbolic.primitives as prim
 from pymbolic import ScalarT
