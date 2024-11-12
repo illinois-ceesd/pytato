@@ -69,9 +69,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Generic,
-    Hashable,
-    Mapping,
-    Sequence,
     TypeVar,
     cast,
 )
