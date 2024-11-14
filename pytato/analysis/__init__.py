@@ -437,9 +437,14 @@ class NodeCountMapper(CachedWalkMapper[[]]):
     Counts the number of nodes of a given type in a DAG.
 
     .. autoattribute:: expr_type_counts
+
+        Dictionary mapping node types to number of nodes of that type.
+
     .. autoattribute:: count_duplicates
 
-       Dictionary mapping node types to number of nodes of that type.
+        If `True`, counts each array instance as a separate node, even if some are
+        equal.
+
     """
 
     def __init__(
