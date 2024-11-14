@@ -36,7 +36,9 @@ from pymbolic.mapper.optimize import optimize_mapper
 
 from pytato.array import (
     Array,
+    AxisPermutation,
     Concatenate,
+    DataWrapper,
     DictOfNamedArrays,
     Einsum,
     IndexBase,
@@ -44,11 +46,21 @@ from pytato.array import (
     IndexRemappingBase,
     InputArgumentBase,
     NamedArray,
+    Placeholder,
+    Reshape,
+    Roll,
     ShapeType,
+    SizeParam,
     Stack,
 )
 from pytato.function import Call, FunctionDefinition, NamedCallResult
-from pytato.transform import ArrayOrNames, CachedWalkMapper, CombineMapper, Mapper
+from pytato.transform import (
+    ArrayOrNames,
+    CachedWalkMapper,
+    CombineMapper,
+    IndexOrShapeExpr,
+    Mapper,
+)
 
 
 if TYPE_CHECKING:
@@ -57,7 +69,7 @@ if TYPE_CHECKING:
     import pytools
 
     from pytato.distributed.nodes import DistributedRecv, DistributedSendRefHolder
-    from pytato.loopy import LoopyCall
+    from pytato.loopy import LoopyCall, LoopyCallResult
 
 
 # FIXME: Think about whether this makes sense
@@ -81,6 +93,8 @@ __doc__ = """
 .. autofunction:: collect_nodes_of_type
 
 .. autofunction:: collect_materialized_nodes
+
+.. autofunction:: trace_dependencies
 
 .. autoclass:: DirectPredecessorsGetter
 
@@ -872,5 +886,176 @@ def collect_materialized_nodes(
     return frozenset(nc.nodes)
 
 # }}}
+
+
+# {{{ DependencyTracer
+
+class DependencyTracer(CombineMapper[frozenset[tuple[Array, ...]], Never]):
+    """
+    Maps a DAG and a node to a :class:`frozenset` of `tuple`\\ s of
+    :class:`pytato.array.Array`\\ s representing dependency traces from
+    the node to one of the DAG outputs.
+
+    .. note::
+
+        Does not recurse into function definitions.
+    """
+    def __init__(self, dependee: Array) -> None:
+        super().__init__()
+        self.dependee = dependee
+
+    def rec_idx_or_size_tuple(
+            self, situp: tuple[IndexOrShapeExpr, ...]
+            ) -> tuple[frozenset[tuple[Array, ...]], ...]:
+        return tuple(self.rec(s) for s in situp if isinstance(s, Array))
+
+    def combine(
+            self, *args: frozenset[tuple[Array, ...]]) -> frozenset[tuple[Array, ...]]:
+        from functools import reduce
+        # FIXME: This doesn't match the docs (original version produced way too
+        # many results)
+        combined: frozenset[tuple[Array, ...]] = reduce(
+            lambda a, b: a | b, args, frozenset())
+        if combined:
+            return frozenset({next(iter(combined))})
+        else:
+            return frozenset()
+
+    def map_index_lambda(self, expr: IndexLambda) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_index_lambda(expr)))
+
+    def map_placeholder(self, expr: Placeholder) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_placeholder(expr)))
+
+    def map_data_wrapper(self, expr: DataWrapper) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_data_wrapper(expr)))
+
+    def map_size_param(self, expr: SizeParam) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_size_param(expr)))
+
+    def map_stack(self, expr: Stack) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_stack(expr)))
+
+    def map_roll(self, expr: Roll) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_roll(expr)))
+
+    def map_axis_permutation(
+            self, expr: AxisPermutation) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_axis_permutation(expr)))
+
+    def _map_index_base(self, expr: IndexBase) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super()._map_index_base(expr)))
+
+    def map_reshape(self, expr: Reshape) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_reshape(expr)))
+
+    def map_concatenate(self, expr: Concatenate) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_concatenate(expr)))
+
+    def map_einsum(self, expr: Einsum) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_einsum(expr)))
+
+    def map_named_array(self, expr: NamedArray) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_named_array(expr)))
+
+    def map_loopy_call(self, expr: LoopyCall) -> frozenset[tuple[Array, ...]]:
+        raise AssertionError("Control shouldn't reach this point.")
+
+    def map_loopy_call_result(
+            self, expr: LoopyCallResult) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_loopy_call_result(expr)))
+
+    def map_distributed_send_ref_holder(
+            self, expr: DistributedSendRefHolder) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_distributed_send_ref_holder(expr)))
+
+    def map_distributed_recv(
+            self, expr: DistributedRecv) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_distributed_recv(expr)))
+
+    def map_call(self, expr: Call) -> frozenset[tuple[Array, ...]]:
+        return self.combine(*(self.rec(bnd)
+                              for bnd in expr.bindings.values()))
+
+    def map_named_call_result(
+            self, expr: NamedCallResult) -> frozenset[tuple[Array, ...]]:
+        if expr == self.dependee:
+            return frozenset({(expr,)})
+        return self.combine(*(
+            frozenset({(expr, *subtrace)})
+            for subtrace in super().map_named_call_result(expr)))
+
+
+def trace_dependencies(
+        outputs: Array | DictOfNamedArrays, dependee: Array
+        ) -> frozenset[tuple[Array, ...]]:
+    from pytato.codegen import normalize_outputs
+    outputs = normalize_outputs(outputs)
+
+    dt = DependencyTracer(dependee)
+    return dt(outputs)
+
+# }}}
+
 
 # vim: fdm=marker
