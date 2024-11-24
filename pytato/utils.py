@@ -37,8 +37,10 @@ from pytato.array import (Array, ShapeType, IndexLambda, SizeParam, ShapeCompone
                           AdvancedIndexInNoncontiguousAxes,
                           ConvertibleToIndexExpr, IndexExpr, NormalizedSlice,
                           _dtype_any, Einsum)
+#from pytato.scalar_expr import (ScalarExpression, IntegralScalarExpression,
+#                                SCALAR_CLASSES, INT_CLASSES, BoolT)
 from pytato.scalar_expr import (ScalarExpression, IntegralScalarExpression,
-                                SCALAR_CLASSES, INT_CLASSES, BoolT)
+                                SCALAR_CLASSES, INT_CLASSES)
 from pytools import UniqueNameGenerator
 from pytato.transform import Mapper
 from pytools.tag import Tag

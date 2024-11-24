@@ -411,8 +411,10 @@ def _augment_array_dataclass(
 ConvertibleToIndexExpr = Union[int, slice, "Array", EllipsisType, None]
 # IndexExpr = Union[IntegerT, "NormalizedSlice", "Array", None, EllipsisType]
 # IndexExpr = Union[IntegerT, "NormalizedSlice", "Array", None]
-DtypeOrScalar = Union[_dtype_any, ScalarT]
-ArrayOrScalar = Union["Array", ScalarT]
+# DtypeOrScalar = Union[_dtype_any, ScalarT]
+# ArrayOrScalar = Union["Array", ScalarT]
+DtypeOrScalar = Union[_dtype_any, Scalar]
+ArrayOrScalar = Union["Array", Scalar]
 IndexExpr = Union[Integer, "NormalizedSlice", "Array", None]
 PyScalarType = type[bool] | type[int] | type[float] | type[complex]
 DtypeOrPyScalarType = _dtype_any | PyScalarType
