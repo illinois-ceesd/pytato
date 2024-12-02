@@ -315,7 +315,7 @@ def array_dataclass(hash: bool = True) -> Callable[[type[T]], type[T]]:
     def map_cls(cls: type[T]) -> type[T]:
         # Frozen dataclasses (empirically) have a ~20% speed penalty,
         # and their frozen-ness is arguably a debug feature.
-        dc_cls = dataclasses.dataclass(init=True, frozen=__debug__,
+        dc_cls = dataclasses.dataclass(init=True, frozen=True,
                                        eq=False, repr=False)(cls)
 
         _augment_array_dataclass(dc_cls, generate_hash=hash)
