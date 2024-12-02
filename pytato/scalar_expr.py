@@ -50,6 +50,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Never,
+    Union,
     cast,
 )
 
@@ -84,6 +85,9 @@ if TYPE_CHECKING:
 # {{{ scalar expressions
 
 INT_CLASSES = (int, np.integer)
+# IntegralScalarExpression = Union[IntegerT, prim.Expression]
+Scalar = Union[np.number[Any], int, np.bool_, bool, float, complex]
+ScalarExpression = Union[Scalar, prim.Expression]
 PYTHON_SCALAR_CLASSES = (int, float, complex, bool)
 SCALAR_CLASSES = prim.VALID_CONSTANT_CLASSES
 

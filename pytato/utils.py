@@ -29,9 +29,24 @@ from typing import (
     cast,
 )
 
-import islpy as isl
-import numpy as np
+from typing import (Tuple, List, Union, Callable, Any, Sequence, Dict,
+                    Optional, Iterable, TypeVar, FrozenSet)
+from pytato.array import (Array, ShapeType, IndexLambda, SizeParam, ShapeComponent,
+                          DtypeOrScalar, ArrayOrScalar, BasicIndex,
+                          AdvancedIndexInContiguousAxes,
+                          AdvancedIndexInNoncontiguousAxes,
+                          ConvertibleToIndexExpr, IndexExpr, NormalizedSlice,
+                          _dtype_any, Einsum)
+#from pytato.scalar_expr import (ScalarExpression, IntegralScalarExpression,
+#                                SCALAR_CLASSES, INT_CLASSES, BoolT)
+from pytato.scalar_expr import (ScalarExpression, IntegralScalarExpression,
+                                SCALAR_CLASSES, INT_CLASSES)
+from pytools import UniqueNameGenerator
+from pytato.transform import Mapper
+from pytools.tag import Tag
 from immutabledict import immutabledict
+import numpy as np
+import islpy as isl
 
 import pymbolic.primitives as prim
 from pymbolic import ArithmeticExpression, Bool, Scalar
@@ -167,6 +182,19 @@ def with_indices_for_broadcasted_shape(val: prim.Variable, shape: ShapeType,
         return val[get_indexing_expression(shape, result_shape)]
 
 
+def extract_dtypes_or_scalars(
+        exprs: Sequence[ArrayOrScalar]) -> List[DtypeOrScalar]:
+    dtypes: List[DtypeOrScalar] = []
+    for expr in exprs:
+        if isinstance(expr, Array):
+            dtypes.append(expr.dtype)
+        else:
+            assert isinstance(expr, SCALAR_CLASSES)
+            dtypes.append(expr)
+
+    return dtypes
+
+
 def update_bindings_and_get_broadcasted_expr(arr: ArrayOrScalar,
                                              bnd_name: str,
                                              bindings: dict[str, Array],
@@ -205,16 +233,19 @@ def broadcast_binary_op(a1: ArrayOrScalar, a2: ArrayOrScalar,
                         ) -> ArrayOrScalar:
     from pytato.array import _get_default_axes
 
+    if isinstance(a1, SCALAR_CLASSES):
+        a1 = np.dtype(type(a1)).type(a1)
+
+    if isinstance(a2, SCALAR_CLASSES):
+        a2 = np.dtype(type(a2)).type(a2)
+
     if np.isscalar(a1) and np.isscalar(a2):
         from pytato.scalar_expr import evaluate
         return evaluate(op(a1, a2))  # type: ignore
 
     result_shape = get_shape_after_broadcasting([a1, a2])
-
-    # Note: get_result_type calls np.result_type by default, which means
-    # that we are passing a pytato array to numpy. Luckily, np.result_type
-    # only looks at the dtype of input arrays as of numpy v2.1.
-    result_dtype = get_result_type(a1, a2)
+    dtypes = extract_dtypes_or_scalars([a1, a2])
+    result_dtype = get_result_type(*dtypes)
 
     bindings: dict[str, Array] = {}
 
