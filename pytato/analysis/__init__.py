@@ -29,6 +29,7 @@ THE SOFTWARE.
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from loopy.tools import LoopyKeyBuilder
 from pymbolic.mapper.optimize import optimize_mapper
 from pytools import memoize_method
 from loopy.tools import LoopyKeyBuilder
@@ -569,6 +570,7 @@ def get_num_call_sites(outputs: Array | DictOfNamedArrays) -> int:
 
 # {{{ PytatoKeyBuilder
 
+
 class PytatoKeyBuilder(LoopyKeyBuilder):  # type: ignore[misc]
     """A custom :class:`pytools.persistent_dict.KeyBuilder` subclass
     for objects within :mod:`pytato`.
@@ -583,30 +585,6 @@ class PytatoKeyBuilder(LoopyKeyBuilder):  # type: ignore[misc]
     def update_for_Array(self, key_hash: Any, key: Any) -> None:
         # CL Array
         self.rec(key_hash, key.get())
-
-    # update_for_BitwiseAnd = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_BitwiseNot = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_BitwiseOr = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_BitwiseXor = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_Call = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815
-    # update_for_CallWithKwargs = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_Comparison = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_If = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815
-    # update_for_FloorDiv = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_LeftShift = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_LogicalAnd = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_LogicalNot = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_LogicalOr = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_Lookup = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_Power = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815
-    # update_for_Product = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815
-    # update_for_Quotient = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_Remainder = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_RightShift = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_Subscript = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-    # update_for_Sum = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815
-    # update_for_Variable = LoopyKeyBuilder.update_for_pymbolic_expression  # noqa: N815, E501
-
 # }}}
 
 # vim: fdm=marker

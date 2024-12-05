@@ -1387,9 +1387,9 @@ def run_test_with_new_python_invocation(f, *args, extra_env_vars=None) -> None:
 
 
 def run_test_with_new_python_invocation_inner() -> None:
+    import os
     from base64 import b64decode
     from pickle import loads
-    import os
 
     f, args = loads(b64decode(os.environ["INVOCATION_INFO"].encode()))
 
@@ -1397,10 +1397,12 @@ def run_test_with_new_python_invocation_inner() -> None:
 
 
 def test_persistent_hashing_and_persistent_dict() -> None:
-    from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
-    from pytato.analysis import PytatoKeyBuilder
     import shutil
     import tempfile
+
+    from pytools.persistent_dict import ReadOnlyEntryError, WriteOncePersistentDict
+
+    from pytato.analysis import PytatoKeyBuilder
 
     try:
         tmpdir = tempfile.mkdtemp()
@@ -1408,8 +1410,9 @@ def test_persistent_hashing_and_persistent_dict() -> None:
         pkb = PytatoKeyBuilder()
 
         pd = WriteOncePersistentDict("test_persistent_dict",
-                                 key_builder=pkb,
-                                 container_dir=tmpdir)
+                                    key_builder=pkb,
+                                    container_dir=tmpdir,
+                                    safe_sync=False)
 
         for i in range(100):
             rdagc = RandomDAGContext(np.random.default_rng(seed=i),
@@ -1432,14 +1435,15 @@ def test_persistent_hashing_and_persistent_dict() -> None:
 
 
 def _test_persistent_hashing_and_persistent_dict_stage2(tmpdir) -> None:
-    from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
+    from pytools.persistent_dict import ReadOnlyEntryError, WriteOncePersistentDict
 
     from pytato.analysis import PytatoKeyBuilder
     pkb = PytatoKeyBuilder()
 
     pd = WriteOncePersistentDict("test_persistent_dict",
                                  key_builder=pkb,
-                                 container_dir=tmpdir)
+                                 container_dir=tmpdir,
+                                 safe_sync=False)
 
     for i in range(100):
         rdagc = RandomDAGContext(np.random.default_rng(seed=i),
@@ -1451,6 +1455,7 @@ def _test_persistent_hashing_and_persistent_dict_stage2(tmpdir) -> None:
             pd[dag] = 42
 
 # }}}
+
 
 def test_numpy_type_promotion_with_pytato_arrays():
     class NotReallyAnArray:
@@ -1465,6 +1470,53 @@ def test_numpy_type_promotion_with_pytato_arrays():
     from pytato.array import _np_result_dtype
     assert _np_result_dtype(42, NotReallyAnArray()) == np.float64
     assert _np_result_dtype(42.0, NotReallyAnArray()) == np.float64
+
+
+def test_pickling_hash():
+    # See https://github.com/inducer/pytato/pull/563 for context
+
+    # {{{ Placeholder
+
+    p = pt.make_placeholder("p", (4, 4), int)
+
+    assert not hasattr(p, "_hash_value")
+
+    # Force hash creation:
+    hash(p)
+
+    assert hasattr(p, "_hash_value")
+
+    from pickle import dumps, loads
+
+    p_new = loads(dumps(p))
+
+    assert not hasattr(p_new, "_hash_value")
+
+    assert p == p_new
+
+    # }}}
+
+    # {{{ DataWrapper
+
+    dw = pt.make_data_wrapper(np.zeros((4, 4), int))
+
+    assert not hasattr(dw, "_hash_value")
+
+    hash(dw)
+
+    # DataWrappers have no hash caching
+    assert not hasattr(dw, "_hash_value")
+
+    dw_new = loads(dumps(dw))
+
+    assert dw_new.shape == dw.shape
+    assert dw_new.dtype == dw.dtype
+    assert np.all(dw_new.data == dw.data)
+
+    # DataWrappers that are not the same object compare unequal
+    assert dw != dw_new
+
+    # }}}
 
 
 if __name__ == "__main__":
