@@ -40,7 +40,6 @@ THE SOFTWARE.
 
 
 import logging
-from collections.abc import Collection, Mapping
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -73,7 +72,6 @@ from pytato.array import (
 )
 from pytato.diagnostic import UnknownIndexLambdaExpr
 from pytato.distributed.nodes import DistributedRecv, DistributedSendRefHolder
-from pytato.function import NamedCallResult
 from pytato.raising import (
     BinaryOp,
     BroadcastOp,
@@ -92,6 +90,9 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Mapping
+
+    from pytato.function import NamedCallResult
     from pytato.loopy import LoopyCall
 
 
@@ -416,7 +417,7 @@ class AxesTagsEquationCollector(Mapper[None, []]):
                                             for i_idx in i_basic_indices
                                             if i_idx > i_adv_indices[-1]])
 
-        indirection_arrays: list[Array] = cast(list[Array],
+        indirection_arrays: list[Array] = cast("list[Array]",
                                                [expr.indices[i_idx]
                                                 for i_idx in i_adv_indices
                                                 if isinstance(expr.indices[i_idx],
@@ -719,11 +720,19 @@ def unify_axes_tags(
         equations_collector.equations
     )
 
-    for tag, var in equations_collector.known_tag_to_var.items():
-        if isinstance(tag, AxisIgnoredForPropagationTag):
-            continue
+    ignored_vars = set({
+        tag_var for tag, tag_var in equations_collector.known_tag_to_var.items()
+        if isinstance(tag, AxisIgnoredForPropagationTag)
+    })
 
-        reachable_nodes = get_reachable_nodes(propagation_graph, var)
+    ignored_vars.update({
+        ax_var for (ary, ax), ax_var in equations_collector.axis_to_var.items()
+        if ary.axes[ax].tags_of_type(AxisIgnoredForPropagationTag)
+    })
+
+    for tag, var in equations_collector.known_tag_to_var.items():
+        reachable_nodes = get_reachable_nodes(propagation_graph, var,
+                                              exclude_nodes=ignored_vars)
         for reachable_var in (reachable_nodes - known_tag_vars):
             axis_to_solved_tags.setdefault(
                 equations_collector.axis_to_var.inverse[reachable_var],
