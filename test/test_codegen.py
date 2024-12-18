@@ -317,6 +317,7 @@ def test_scalar_array_binary_arith(ctx_factory, which, reverse):
             out_ref = np_op(x_in, y_orig.astype(dtype))
 
             assert out.dtype == out_ref.dtype, (out.dtype, out_ref.dtype)
+            # In some cases ops are done in float32 in loopy but float64 in numpy.
             assert np.allclose(out, out_ref), (out, out_ref)
 
 
@@ -1612,7 +1613,7 @@ def test_zero_size_cl_array_dedup(ctx_factory):
     x4 = pt.make_data_wrapper(x_cl2)
 
     out = pt.make_dict_of_named_arrays({"out1": 2*x1,
-                                        "out2": 2*x2,
+                                        "out2": 3*x2,
                                         "out3": x3 + x4
                                         })
 

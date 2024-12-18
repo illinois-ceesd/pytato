@@ -1840,6 +1840,33 @@ def rec_get_user_nodes(expr: ArrayOrNames,
 # }}}
 
 
+# {{{ BranchMorpher
+
+class BranchMorpher(CopyMapper):
+    """
+    A mapper that replaces equal segments of graphs with identical objects.
+    """
+    def __init__(self) -> None:
+        super().__init__()
+        self.result_cache: Dict[ArrayOrNames, ArrayOrNames] = {}
+
+    def cache_key(self, expr: CachedMapperT) -> Any:
+        return (id(expr), expr)
+
+    # type-ignore reason: incompatible with Mapper.rec
+    def rec(self, expr: MappedT) -> MappedT:  # type: ignore[override]
+        rec_expr = super().rec(expr)
+        try:
+            # type-ignored because 'result_cache' maps to ArrayOrNames
+            return self.result_cache[rec_expr]   # type: ignore[return-value]
+        except KeyError:
+            self.result_cache[rec_expr] = rec_expr
+            # type-ignored because of super-class' relaxed types
+            return rec_expr  # type: ignore[no-any-return]
+
+# }}}
+
+
 # {{{ deduplicate_data_wrappers
 
 def _get_data_dedup_cache_key(ary: DataInterface) -> Hashable:
@@ -1929,8 +1956,9 @@ def deduplicate_data_wrappers(array_or_names: ArrayOrNames) -> ArrayOrNames:
                                len(data_wrapper_cache),
                                data_wrappers_encountered - len(data_wrapper_cache))
 
-    return array_or_names
+    return BranchMorpher()(array_or_names)
 
 # }}}
+
 
 # vim: foldmethod=marker
