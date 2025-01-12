@@ -614,8 +614,12 @@ class AxisTagAttacher(CopyMapper):
                 assert expr_copy.ndim == expr.ndim
 
                 for iaxis in range(expr.ndim):
+                    axis_tags = self.axis_to_tags.get((expr, iaxis), [])
+                    if len(axis_tags) == 0:
+                        print(f"failed to infer axis {iaxis} of array of type {type(expr)}.")
+                        print(f"{expr.non_equality_tags=}")
                     expr_copy = expr_copy.with_tagged_axis(
-                        iaxis, self.axis_to_tags.get((expr, iaxis), []))
+                        iaxis, axis_tags)
 
                 # {{{ tag reduction descrs
 
