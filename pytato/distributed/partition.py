@@ -519,7 +519,8 @@ def _schedule_task_batches_counted(
 
     for task_id, dep_level in task_to_dep_level.items():
         if task_id not in task_batches[dep_level]:
-            task_batches[dep_level][task_id] = None
+            # task_batches[dep_level][task_id] = None
+            task_batches[dep_level].add(task_id)
 
     return task_batches, visits_in_depend + len(task_to_dep_level.keys())
 
@@ -592,15 +593,18 @@ class _MaterializedArrayCollector(CachedWalkMapper[[]]):
         from pytato.tags import ImplStored
 
         if (isinstance(expr, Array) and expr.tags_of_type(ImplStored)):
-            self.materialized_arrays[expr] = None
+            # self.materialized_arrays[expr] = None
+            self.materialized_arrays.add(expr)
 
         if isinstance(expr, LoopyCallResult):
-            self.materialized_arrays[expr] = None
+            # self.materialized_arrays[expr] = None
+            self.materialized_arrays.add(expr)
             from pytato.loopy import LoopyCall
             assert isinstance(expr._container, LoopyCall)
             for _, subexpr in sorted(expr._container.bindings.items()):
                 if isinstance(subexpr, Array):
-                    self.materialized_arrays[subexpr] = None
+                    # self.materialized_arrays[subexpr] = None
+                    self.materialized_arrays.add(subexpr)
                 else:
                     assert isinstance(subexpr, SCALAR_CLASSES)
 
@@ -943,10 +947,12 @@ def find_distributed_partition(
         for pred in direct_preds_getter(ary):
             assert isinstance(pred, Array)
             if pred in materialized_arrays:
-                materialized_preds[pred] = None
+                # materialized_preds[pred] = None
+                materialized_preds.add(pred)
             else:
                 for p in get_materialized_predecessors(pred):
-                    materialized_preds[p] = None
+                    # materialized_preds[p] = None
+                    materialized_preds.add(p)
         return materialized_preds
 
     stored_arrays_promoted_to_part_outputs = FrozenOrderedSet(
