@@ -321,10 +321,10 @@ class _DistributedInputReplacer(CopyMapper):
 class _PartCommIDs:
     """A *part*, unlike a *batch*, begins with receives and ends with sends.
     """
-    recv_ids: immutabledict[CommunicationOpIdentifier, None]
-    send_ids: immutabledict[CommunicationOpIdentifier, None]
-    # recv_ids: FrozenOrderedSet[CommunicationOpIdentifier]
-    # send_ids: FrozenOrderedSet[CommunicationOpIdentifier]
+    # recv_ids: immutabledict[CommunicationOpIdentifier, None]
+    # send_ids: immutabledict[CommunicationOpIdentifier, None]
+    recv_ids: FrozenOrderedSet[CommunicationOpIdentifier]
+    send_ids: FrozenOrderedSet[CommunicationOpIdentifier]
 
 
 # {{{ _make_distributed_partition
