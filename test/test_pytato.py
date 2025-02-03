@@ -1139,6 +1139,43 @@ def test_adv_indexing_into_zero_long_axes():
     # }}}
 
 
+def test_tagcountmapper():
+    from testlib import RandomDAGContext, make_random_dag
+
+    from pytools.tag import Tag
+
+    from pytato.analysis import get_num_nodes, get_num_tags_of_type
+
+    class NonExistentTag(Tag):
+        pass
+
+    class ExistentTag(Tag):
+        pass
+
+    seed = 199
+    axis_len = 3
+
+    rdagc_pt = RandomDAGContext(np.random.default_rng(seed=seed),
+                                    axis_len=axis_len, use_numpy=False)
+
+    out = make_random_dag(rdagc_pt).tagged(ExistentTag())
+
+    dag = pt.make_dict_of_named_arrays({"out": out})
+
+    # get_num_nodes() returns an extra DictOfNamedArrays node
+    assert get_num_tags_of_type(dag, frozenset()) == get_num_nodes(dag)
+
+    assert get_num_tags_of_type(dag, NonExistentTag()) == 0
+    assert get_num_tags_of_type(dag, frozenset((ExistentTag(),))) == 1
+    assert get_num_tags_of_type(dag,
+        frozenset((ExistentTag(), NonExistentTag()))) == 0
+
+    a = pt.make_data_wrapper(np.arange(27))
+    dag = a+a+a+a+a+a+a+a
+
+    assert get_num_tags_of_type(dag, frozenset()) == get_num_nodes(dag)
+
+
 def test_expand_dims_input_validate():
     a = pt.make_placeholder("x", (10, 4))
 
@@ -1204,6 +1241,8 @@ def test_derived_class_uses_correct_array_eq():
 
 
 def test_lower_to_index_lambda():
+    from pymbolic.primitives import Variable
+
     from pytato.array import IndexLambda, Reshape
     expr = pt.ones(12).reshape(6, 2).reshape(3, 4)
     idx_lambda = pt.to_index_lambda(expr)
@@ -1211,6 +1250,39 @@ def test_lower_to_index_lambda():
     binding, = idx_lambda.bindings.values()
     # test that it didn't recurse further
     assert isinstance(binding, Reshape)
+
+    # Simple reshapes get simple index expressions.
+    x = pt.make_placeholder(name="x", dtype=float, shape=(10, 4))
+
+    # Expand at the end.
+    expr = pt.expand_dims(x, [2, 3])
+    idx_lambda = pt.to_index_lambda(expr)
+    assert isinstance(idx_lambda, IndexLambda)
+    assert idx_lambda.expr.index_tuple == (Variable("_0"), Variable("_1"))
+
+    # Expand to front
+    expr = pt.expand_dims(x, [0, 1])
+    idx_lambda = pt.to_index_lambda(expr)
+    assert isinstance(idx_lambda, IndexLambda)
+    assert idx_lambda.expr.index_tuple == (Variable("_2"), Variable("_3"))
+
+    # Expand in the middle
+    expr = x.reshape(10, 1, 1, 1, 1, 4)
+    idx_lambda = pt.to_index_lambda(expr)
+    assert isinstance(idx_lambda, IndexLambda)
+    assert idx_lambda.expr.index_tuple[0] == Variable("_0")
+    assert idx_lambda.expr.index_tuple[1] == Variable("_5")
+
+    # Simple reshapes get simple index expressions.
+    x = pt.make_placeholder(name="x", dtype=float, shape=(1, 10, 1, 1, 4, 1))
+
+    # Contract
+    expr = x.reshape(10, 4)
+    idx_lambda = pt.to_index_lambda(expr)
+    assert isinstance(idx_lambda, IndexLambda)
+    assert len(x.shape) == len(idx_lambda.expr.index_tuple)
+    assert idx_lambda.expr.index_tuple[1] == Variable("_0")
+    assert idx_lambda.expr.index_tuple[4] == Variable("_1")
 
 
 def test_cached_walk_mapper_with_extra_args():
