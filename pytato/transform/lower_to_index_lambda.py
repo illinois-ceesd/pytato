@@ -733,7 +733,8 @@ class ToIndexLambdaMapper(Mapper[Array, Never, []], ToIndexLambdaMixin):
     def rec(self, expr: Array) -> Array:  # type: ignore[override]
         return expr
 
-    __call__ = Mapper.rec
+    def __call__(self, expr: Array) -> Array:  # type: ignore[override]
+        return Mapper.rec(self, expr)
 
 
 def to_index_lambda(expr: Array) -> IndexLambda:
