@@ -465,6 +465,60 @@ class AxisTagAttacher(CopyMapper):
         return result
 
     def rec(self, expr: ArrayOrNames) -> ArrayOrNames:
+        # Change conflic from merging main 02/03/25
+        # if isinstance(expr, AbstractResultWithNamedArrays | DistributedSendRefHolder):
+        #     return super().rec(expr)
+        # else:
+        #     assert isinstance(expr, Array)
+        #     key = self.get_cache_key(expr)
+        #     try:
+        #         return self._cache[key]
+        #     except KeyError:
+        #         expr_copy = Mapper.rec(self, expr)
+        #         assert isinstance(expr_copy, Array)
+        #         assert expr_copy.ndim == expr.ndim
+
+        #         for iaxis in range(expr.ndim):
+        #             axis_tags = self.axis_to_tags.get((expr, iaxis), [])
+        #             if len(axis_tags) == 0:
+        #                 print(f"failed to infer axis {iaxis} of array of type {type(expr)}.")
+        #                 print(f"{expr.non_equality_tags=}")
+        #             expr_copy = expr_copy.with_tagged_axis(
+        #                 iaxis, axis_tags)
+
+        #         # {{{ tag reduction descrs
+
+        #         if self.tag_corresponding_redn_descr:
+        #             if isinstance(expr, Einsum):
+        #                 assert isinstance(expr_copy, Einsum)
+        #                 for arg, access_descrs in zip(expr.args,
+        #                                               expr.access_descriptors,
+        #                                               strict=True):
+        #                     for iaxis, access_descr in enumerate(access_descrs):
+        #                         if isinstance(access_descr, EinsumReductionAxis):
+        #                             expr_copy = expr_copy.with_tagged_reduction(
+        #                                 access_descr,
+        #                                 self.axis_to_tags.get((arg, iaxis), [])
+        #                             )
+
+        #             if isinstance(expr, IndexLambda):
+        #                 assert isinstance(expr_copy, IndexLambda)
+        #                 try:
+        #                     hlo = index_lambda_to_high_level_op(expr)
+        #                 except UnknownIndexLambdaExpr:
+        #                     pass
+        #                 else:
+        #                     if isinstance(hlo, ReduceOp):
+        #                         for iaxis, redn_var in hlo.axes.items():
+        #                             expr_copy = expr_copy.with_tagged_reduction(
+        #                                 redn_var,
+        #                                 self.axis_to_tags.get((hlo.x, iaxis), [])
+        #                             )
+
+        #         # }}}
+
+        #         self._cache[key] = expr_copy
+        #         return expr_copy
         key = self._cache.get_key(expr)
         try:
             return self._cache.retrieve(expr, key=key)
