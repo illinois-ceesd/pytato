@@ -82,7 +82,7 @@ from pytato.tags import ImplStored
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
 
 ArrayOrNames: TypeAlias = Array | AbstractResultWithNamedArrays
@@ -1662,6 +1662,136 @@ class InputGatherer(
             *[
                 self.rec(bnd)
                 for name, bnd in sorted(expr.bindings.items())])
+
+# }}}
+
+
+# {{{ precompute_subexpressions
+
+# FIXME: Think about what happens when subexpressions contain outlined functions
+class _PrecomputableSubexpressionGatherer(
+        CombineMapper[frozenset[Array], frozenset[Array]]):
+    """
+    Mapper to find subexpressions that do not depend on any placeholders.
+    """
+    def rec(self, expr: ArrayOrNames) -> frozenset[Array]:
+        inputs = self._make_cache_inputs(expr)
+        try:
+            return self._cache_retrieve(inputs)
+        except KeyError:
+            result: frozenset[Array] = Mapper.rec(self, expr)
+            if not isinstance(expr,
+                    Placeholder
+                    | DictOfNamedArrays
+                    | Call):
+                assert isinstance(expr, Array)
+                from pytato.analysis import DirectPredecessorsGetter
+                if result == DirectPredecessorsGetter()(expr):
+                    result = frozenset({expr})
+            return self._cache_add(inputs, result)
+
+    # type-ignore reason: incompatible ret. type with super class
+    def __call__(self, expr: ArrayOrNames) -> frozenset[Array]:  # type: ignore
+        subexprs = self.rec(expr)
+
+        # Need to treat data arrays as precomputable during recursion, but afterwards
+        # we only care about larger expressions containing them *or* their shape if
+        # it's a non-constant expression
+        # FIXME: Does it even make sense for a data array to have an expression as
+        # a shape? Maybe this isn't necessary...
+
+        data_subexprs = {
+            ary
+            for ary in subexprs
+            if isinstance(ary, DataWrapper | DistributedRecv)}
+
+        subexprs -= data_subexprs
+
+        for ary in data_subexprs:
+            subexprs |= self.combine(*self.rec_idx_or_size_tuple(ary.shape))
+
+        return subexprs
+
+    def combine(self, *args: frozenset[Array]) -> frozenset[Array]:
+        from functools import reduce
+        return reduce(lambda a, b: a | b, args, frozenset())
+
+    def map_function_definition(self, expr: FunctionDefinition) -> frozenset[Array]:
+        # FIXME: Ignoring subexpressions inside function definitions for now
+        return frozenset()
+
+    def map_call(self, expr: Call) -> frozenset[Array]:
+        rec_fn = self.rec_function_definition(expr.function)
+        assert not rec_fn
+        rec_bindings: Mapping[str, frozenset[Array]] = immutabledict({
+            name: self.rec(bnd) if isinstance(bnd, Array) else frozenset({bnd})
+            for name, bnd in expr.bindings.items()})
+        if all(
+                rec_bindings[name] == frozenset({expr.bindings[name]})
+                for name in expr.bindings):
+            # FIXME: This conflicts with type annotations
+            return frozenset({expr})
+        else:
+            return self.combine(rec_fn, *rec_bindings.values())
+
+
+class _PrecomputableSubexpressionReplacer(CopyMapper):
+    """
+    Mapper to replace precomputable subexpressions found by
+    :class:`_PrecomputableSubexpressionGatherer` with the evaluated versions.
+    """
+    def __init__(
+            self,
+            replacement_map: Mapping[Array, Array],
+            _cache: TransformMapperCache[ArrayOrNames, []] | None = None,
+            _function_cache:
+                TransformMapperCache[FunctionDefinition, []] | None = None
+            ) -> None:
+        super().__init__(_cache=_cache, _function_cache=_function_cache)
+        self.replacement_map = replacement_map
+
+    def rec(self, expr: ArrayOrNames) -> ArrayOrNames:
+        inputs = self._make_cache_inputs(expr)
+        try:
+            return self._cache_retrieve(inputs)
+        except KeyError:
+            result: ArrayOrNames | None = None
+            if isinstance(expr, Array):
+                try:
+                    result = self.replacement_map[expr]
+                except KeyError:
+                    pass
+            result = self.rec(result) if result is not None else Mapper.rec(self, expr)
+            return self._cache_add(inputs, result)
+
+    def clone_for_callee(self, function: FunctionDefinition) -> Self:
+        return type(self)(
+            {},
+            _function_cache=cast(
+                "TransformMapperCache[FunctionDefinition, []]",self._function_cache))
+
+
+def precompute_subexpressions(
+        expr: ArrayOrNames,
+        # FIXME: Don't use Sequence for this
+        eval_func: Callable[[Sequence[ArrayOrNames]], Sequence[ArrayOrNames]]
+        ) -> ArrayOrNames:
+    """Evaluate subexpressions in *expr* that do not depend on any placeholders."""
+    precomputable_subexprs = _PrecomputableSubexpressionGatherer()(expr)
+    for subexpr in precomputable_subexprs:
+        from pytato.analysis import get_num_nodes
+        nnodes = get_num_nodes(subexpr)
+        if nnodes > 1:
+            print(
+                "Found precomputable subexpression of type "
+                f"{type(subexpr).__name__} with {nnodes} nodes.")
+    from pytools.obj_array import make_obj_array
+    # FIXME: Don't use object array
+    precomputable_subexprs_ary = make_obj_array(list(precomputable_subexprs))
+    evaled_subexprs_ary = eval_func(precomputable_subexprs_ary)
+    subexpr_to_evaled_subexpr = dict(
+        zip(precomputable_subexprs_ary, evaled_subexprs_ary, strict=True))
+    return _PrecomputableSubexpressionReplacer(subexpr_to_evaled_subexpr)(expr)
 
 # }}}
 
