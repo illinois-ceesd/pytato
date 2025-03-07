@@ -148,13 +148,44 @@ def _get_reshaped_indices(
         assert product(new_shape) == 1
         return ()
 
-    if expr.order not in ["C", "F"]:
+    if order not in ["C", "F"]:
         raise NotImplementedError("Order expected to be 'C' or 'F'",
-                                  f" found {expr.order}")
+                                  f" found {order}")
 
-    if expr.order == "C":
+    non1_shape = []
+    for axis_len in new_shape:
+        assert isinstance(axis_len, INT_CLASSES)
+        if axis_len > 1:
+            non1_shape.append(axis_len)
+    non1_shape = tuple(non1_shape)
+
+    old_non1_shape = []
+    for axis_len in old_shape:
+        assert isinstance(axis_len, INT_CLASSES)
+        if axis_len > 1:
+            old_non1_shape.append(axis_len)
+    old_non1_shape = tuple(old_non1_shape)
+
+    if non1_shape == old_non1_shape:
+        non1_axes = tuple(
+            iaxis for iaxis in range(len(new_shape))
+            if new_shape[iaxis] > 1)
+        old_non1_axes = tuple(
+            iaxis for iaxis in range(len(old_shape))
+            if old_shape[iaxis] > 1)
+        old_iaxis_to_iaxis = {
+            old_iaxis: iaxis
+            for old_iaxis, iaxis in zip(
+                old_non1_axes, non1_axes)}
+        return tuple(
+            prim.Variable(f"_{old_iaxis_to_iaxis[old_iaxis]}")
+            if old_iaxis in old_iaxis_to_iaxis
+            else 0
+            for old_iaxis in range(len(old_shape)))
+
+    if order == "C":
         newstrides: list[IntegralT] = [1]  # reshaped array strides
-        for new_axis_len in reversed(expr.shape[1:]):
+        for new_axis_len in reversed(new_shape[1:]):
             assert isinstance(new_axis_len, INT_CLASSES)
             newstrides.insert(0, newstrides[0]*new_axis_len)
 
@@ -162,20 +193,20 @@ def _get_reshaped_indices(
                             for i, stride in enumerate(newstrides))
 
         oldstrides: list[IntegralT] = [1]  # input array strides
-        for axis_len in reversed(expr.array.shape[1:]):
+        for axis_len in reversed(old_shape[1:]):
             assert isinstance(axis_len, INT_CLASSES)
             oldstrides.insert(0, oldstrides[0]*axis_len)
 
-        assert isinstance(expr.array.shape[-1], INT_CLASSES)
-        oldsizetills = [expr.array.shape[-1]]  # input array size
+        assert isinstance(old_shape[-1], INT_CLASSES)
+        oldsizetills = [old_shape[-1]]  # input array size
                                                # till for axes idx
-        for old_axis_len in reversed(expr.array.shape[:-1]):
+        for old_axis_len in reversed(old_shape[:-1]):
             assert isinstance(old_axis_len, INT_CLASSES)
             oldsizetills.insert(0, oldsizetills[0]*old_axis_len)
 
     else:
         newstrides: list[IntegralT] = [1]  # reshaped array strides
-        for new_axis_len in expr.shape[:-1]:
+        for new_axis_len in new_shape[:-1]:
             assert isinstance(new_axis_len, INT_CLASSES)
             newstrides.append(newstrides[-1]*new_axis_len)
 
@@ -183,13 +214,13 @@ def _get_reshaped_indices(
                             for i, stride in enumerate(newstrides))
 
         oldstrides: list[IntegralT] = [1]  # input array strides
-        for axis_len in expr.array.shape[:-1]:
+        for axis_len in old_shape[:-1]:
             assert isinstance(axis_len, INT_CLASSES)
             oldstrides.append(oldstrides[-1]*axis_len)
 
-        assert isinstance(expr.array.shape[0], INT_CLASSES)
-        oldsizetills = [expr.array.shape[0]]  # input array size till for axes idx
-        for old_axis_len in expr.array.shape[1:]:
+        assert isinstance(old_shape[0], INT_CLASSES)
+        oldsizetills = [old_shape[0]]  # input array size till for axes idx
+        for old_axis_len in old_shape[1:]:
             assert isinstance(old_axis_len, INT_CLASSES)
             oldsizetills.append(oldsizetills[-1]*old_axis_len)
 

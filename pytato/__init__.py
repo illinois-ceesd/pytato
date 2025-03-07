@@ -159,7 +159,12 @@ from pytato.target.loopy import LoopyPyOpenCLTarget
 from pytato.target.loopy.codegen import generate_loopy
 from pytato.target.python.jax import generate_jax
 from pytato.transform import precompute_subexpressions
-from pytato.transform.calls import inline_calls, tag_all_calls_to_be_inlined
+from pytato.transform.calls import (
+    concatenate_calls,
+    inline_calls,
+    tag_all_calls_to_be_inlined,
+    zero_unused_call_bindings,
+)
 from pytato.transform.lower_to_index_lambda import to_index_lambda
 from pytato.transform.metadata import unify_axes_tags
 from pytato.transform.remove_broadcasts_einsum import rewrite_einsums_with_no_broadcasts
@@ -216,6 +221,7 @@ __all__ = (
     "arctan2",
     "broadcast_to",
     "concatenate",
+    "concatenate_calls",
     "conj",
     "cos",
     "cosh",
@@ -289,5 +295,6 @@ __all__ = (
     "vdot",
     "verify_distributed_partition",
     "where",
+    "zero_unused_call_bindings",
     "zeros",
 )

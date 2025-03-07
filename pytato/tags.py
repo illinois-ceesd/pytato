@@ -17,6 +17,9 @@ Pre-Defined Tags
 .. autoclass:: FunctionIdentifier
 .. autoclass:: CallImplementationTag
 .. autoclass:: InlineCallTag
+.. autoclass:: UseInputAxis
+.. autoclass:: ConcatenatedCallInputConcatAxisTag
+.. autoclass:: ConcatenatedCallOutputSliceAxisTag
 """
 
 from dataclasses import dataclass
@@ -232,4 +235,31 @@ class InlineCallTag(CallImplementationTag):
     r"""
     A :class:`CallImplementationTag` that directs the
     :class:`pytato.target.Target` to inline the call site.
+    """
+
+
+@dataclass(frozen=True)
+class UseInputAxis(UniqueTag):
+    """
+    A placeholder axis tag indicating that an array should derive tags from one of
+    its inputs.
+    """
+    key: Hashable
+    axis: int
+
+
+@dataclass(frozen=True)
+class ConcatenatedCallInputConcatAxisTag(UniqueTag):
+    """
+    An axis tag indicating that an array is a concatenation of multiple
+    inputs resulting from the transformations done in
+    :func:`pytato.concatenate_calls`.
+    """
+
+
+@dataclass(frozen=True)
+class ConcatenatedCallOutputSliceAxisTag(UniqueTag):
+    """
+    An axis tag indicating that an array is a slice of a concatenated output
+    resulting from the transformations done in :func:`pytato.concatenate_calls`.
     """

@@ -2046,6 +2046,25 @@ def _get_created_at_tag(stacklevel: int = 1) -> frozenset[Tag]:
     return frozenset({CreatedAt(_PytatoStackSummary(frames))})
 
 
+def _inherit_created_at_tag_from(ary: Array, src_ary: Array) -> Array:
+    from pytato.tags import CreatedAt
+    try:
+        tb_tag = next(
+            tag for tag in src_ary.non_equality_tags
+            if isinstance(tag, CreatedAt))
+    except StopIteration:
+        tb_tag = None
+
+    if tb_tag is not None:
+        return attrs.evolve(
+            ary,
+            non_equality_tags=frozenset({
+                tb_tag if isinstance(tag, CreatedAt) else tag
+                for tag in ary.non_equality_tags}))
+    else:
+        return ary
+
+
 def _get_default_tags() -> frozenset[Tag]:
     return frozenset()
 
