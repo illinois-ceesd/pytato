@@ -1436,6 +1436,9 @@ class CombineMapper(CachedMapper[ResultT, FunctionResultT, []]):
     def map_data_wrapper(self, expr: DataWrapper) -> ResultT:
         return self.combine(*self.rec_idx_or_size_tuple(expr.shape))
 
+    def map_size_param(self, expr: SizeParam) -> ResultT:
+        return self.combine(cast("ResultT", frozenset({})))
+
     def map_stack(self, expr: Stack) -> ResultT:
         return self.combine(*(self.rec(ary)
                               for ary in expr.arrays))
