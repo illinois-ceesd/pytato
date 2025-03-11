@@ -325,7 +325,11 @@ def is_einsum_similar_to_subscript(expr: Einsum, subscripts: str) -> bool:
 
 # {{{ DirectPredecessorsGetter
 
-class DirectPredecessorsGetter(Mapper[frozenset[ArrayOrNames], Never, []]):
+class DirectPredecessorsGetter(
+        Mapper[
+            FrozenOrderedSet[ArrayOrNames | FunctionDefinition],
+            FrozenOrderedSet[ArrayOrNames],
+            []]):
     """
     Mapper to get the
     `direct predecessors
@@ -336,8 +340,16 @@ class DirectPredecessorsGetter(Mapper[frozenset[ArrayOrNames], Never, []]):
 
         We only consider the predecessors of a nodes in a data-flow sense.
     """
+    def __init__(self, *, include_functions: bool = False) -> None:
+        super().__init__()
+        self.include_functions = include_functions
+
     def _get_preds_from_shape(self, shape: ShapeType) -> FrozenOrderedSet[ArrayOrNames]:
         return FrozenOrderedSet(dim for dim in shape if isinstance(dim, Array))
+
+    def map_dict_of_named_arrays(
+            self, expr: DictOfNamedArrays) -> FrozenOrderedSet[ArrayOrNames]:
+        return FrozenOrderedSet(expr._data.values())
 
     def map_index_lambda(self, expr: IndexLambda) -> FrozenOrderedSet[ArrayOrNames]:
         return (FrozenOrderedSet(expr.bindings.values())
@@ -399,8 +411,17 @@ class DirectPredecessorsGetter(Mapper[frozenset[ArrayOrNames], Never, []]):
                                         ) -> FrozenOrderedSet[ArrayOrNames]:
         return FrozenOrderedSet([expr.passthrough_data])
 
-    def map_call(self, expr: Call) -> FrozenOrderedSet[ArrayOrNames]:
-        return FrozenOrderedSet(expr.bindings.values())
+    def map_call(
+            self, expr: Call) -> FrozenOrderedSet[ArrayOrNames | FunctionDefinition]:
+        result: FrozenOrderedSet[ArrayOrNames | FunctionDefinition] = \
+            FrozenOrderedSet(expr.bindings.values())
+        if self.include_functions:
+            result = result | FrozenOrderedSet([expr.function])
+        return result
+
+    def map_function_definition(
+            self, expr: FunctionDefinition) -> FrozenOrderedSet[ArrayOrNames]:
+        return FrozenOrderedSet(expr.returns.values())
 
     def map_named_call_result(
             self, expr: NamedCallResult) -> FrozenOrderedSet[ArrayOrNames]:
@@ -624,11 +645,14 @@ class TagCountMapper(CombineMapper[int, Never]):
         return sum(args)
 
     def rec(self, expr: ArrayOrNames) -> int:
-        key = self._cache.get_key(expr)
+        inputs = self._make_cache_inputs(expr)
         try:
-            return self._cache.retrieve(expr, key=key)
+            return self._cache_retrieve(inputs)
         except KeyError:
-            s = super().rec(expr)
+            # Intentionally going to Mapper instead of super() to avoid
+            # double caching when subclasses of CachedMapper override rec,
+            # see https://github.com/inducer/pytato/pull/585
+            s = Mapper.rec(self, expr)
             if (
                     isinstance(expr, Array)
                     and (
@@ -638,7 +662,7 @@ class TagCountMapper(CombineMapper[int, Never]):
             else:
                 result = 0 + s
 
-            self._cache.add(expr, 0, key=key)
+            self._cache_add(inputs, 0)
             return result
 
 
