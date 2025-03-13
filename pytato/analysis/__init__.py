@@ -624,11 +624,14 @@ class TagCountMapper(CombineMapper[int, Never]):
         return sum(args)
 
     def rec(self, expr: ArrayOrNames) -> int:
-        key = self._cache.get_key(expr)
+        inputs = self._make_cache_inputs(expr)
         try:
-            return self._cache.retrieve(expr, key=key)
+            return self._cache.retrieve(inputs)
         except KeyError:
-            s = super().rec(expr)
+            # Intentionally going to Mapper instead of super() to avoid
+            # double caching when subclasses of CachedMapper override rec,
+            # see https://github.com/inducer/pytato/pull/585
+            s = Mapper.rec(self, expr)
             if (
                     isinstance(expr, Array)
                     and (
@@ -638,7 +641,7 @@ class TagCountMapper(CombineMapper[int, Never]):
             else:
                 result = 0 + s
 
-            self._cache.add(expr, 0, key=key)
+            self._cache.add(inputs, 0)
             return result
 
 
