@@ -70,6 +70,7 @@ from pytato.array import (
     IndexLambda,
     InputArgumentBase,
     NamedArray,
+    NormalizedSlice,
     Reshape,
     Stack,
 )
@@ -79,8 +80,10 @@ from pytato.scalar_expr import (
     IDX_LAMBDA_AXIS_INDEX,
     CombineMapper,
 )
+from pytato.tags import UseInputAxis
 from pytato.transform import ArrayOrNames, CopyMapper, Mapper, TransformMapperCache
 from pytato.transform.lower_to_index_lambda import to_index_lambda
+from pytato.utils import are_shape_components_equal
 
 
 logger = logging.getLogger(__name__)
@@ -326,7 +329,26 @@ class AxesTagsEquationCollector(Mapper[None, Never, []]):
     def map_concatenate(self, expr: Concatenate) -> None:
         for ary in expr.arrays:
             self.rec(ary)
-        self.add_equations_using_index_lambda_version_of_expr(expr)
+        # FIXME: Figure out how to integrate the UseInputAxis stuff into
+        # add_equations_using_index_lambda_version_of_expr
+        # self.add_equations_using_index_lambda_version_of_expr(expr)
+        for ary in expr.arrays:
+            assert ary.ndim == expr.ndim
+            for iaxis in range(expr.ndim):
+                if iaxis == expr.axis:
+                    use_input_axis_tags = expr.axes[iaxis].tags_of_type(
+                        UseInputAxis)
+                    if use_input_axis_tags:
+                        tag, = use_input_axis_tags
+                        self.record_equation(
+                            self.get_var_for_axis(expr.arrays[tag.key], tag.axis),
+                            self.get_var_for_axis(expr, iaxis))
+                else:
+                    # non-concatenated axes share the dimensions.
+                    self.record_equation(
+                        self.get_var_for_axis(ary, iaxis),
+                        self.get_var_for_axis(expr, iaxis)
+                    )
 
     def map_axis_permutation(self, expr: AxisPermutation
                              ) -> None:
@@ -335,7 +357,36 @@ class AxesTagsEquationCollector(Mapper[None, Never, []]):
 
     def map_basic_index(self, expr: BasicIndex) -> None:
         self.rec(expr.array)
-        self.add_equations_using_index_lambda_version_of_expr(expr)
+        # FIXME: Figure out how to integrate the UseInputAxis stuff into
+        # add_equations_using_index_lambda_version_of_expr
+        # self.add_equations_using_index_lambda_version_of_expr(expr)
+        i_out_axis = 0
+
+        assert len(expr.indices) == expr.array.ndim
+
+        for i_in_axis, idx in enumerate(expr.indices):
+            if isinstance(idx, int):
+                pass
+            else:
+                assert isinstance(idx, NormalizedSlice)
+                use_input_axis_tags = expr.axes[i_out_axis].tags_of_type(
+                    UseInputAxis)
+                if use_input_axis_tags:
+                    tag, = use_input_axis_tags
+                    self.record_equation(
+                        self.get_var_for_axis(expr.array, tag.axis),
+                        self.get_var_for_axis(expr, i_out_axis))
+                elif (idx.step == 1
+                        and are_shape_components_equal(idx.start, 0)
+                        and are_shape_components_equal(idx.stop,
+                                                       expr.array.shape[i_in_axis])):
+
+                    self.record_equation(
+                        self.get_var_for_axis(expr.array, i_in_axis),
+                        self.get_var_for_axis(expr, i_out_axis)
+                    )
+
+                i_out_axis += 1
 
     def map_contiguous_advanced_index(self,
                                       expr: AdvancedIndexInContiguousAxes
@@ -416,9 +467,9 @@ class AxisTagAttacher(CopyMapper):
     def __init__(self,
                  axis_to_tags: Mapping[tuple[Array, int | str], Collection[Tag]],
                  tag_corresponding_redn_descr: bool,
-                 _cache: TransformMapperCache[ArrayOrNames] | None = None,
+                 _cache: TransformMapperCache[ArrayOrNames, []] | None = None,
                  _function_cache:
-                    TransformMapperCache[FunctionDefinition] | None = None):
+                    TransformMapperCache[FunctionDefinition, []] | None = None):
         super().__init__(_cache=_cache, _function_cache=_function_cache)
         self.axis_to_tags: Mapping[tuple[Array, int | str],
                                    Collection[Tag]] = axis_to_tags
@@ -465,71 +516,20 @@ class AxisTagAttacher(CopyMapper):
         return result
 
     def rec(self, expr: ArrayOrNames) -> ArrayOrNames:
-        # Change conflic from merging main 02/03/25
-        # if isinstance(expr, AbstractResultWithNamedArrays | DistributedSendRefHolder):
-        #     return super().rec(expr)
-        # else:
-        #     assert isinstance(expr, Array)
-        #     key = self.get_cache_key(expr)
-        #     try:
-        #         return self._cache[key]
-        #     except KeyError:
-        #         expr_copy = Mapper.rec(self, expr)
-        #         assert isinstance(expr_copy, Array)
-        #         assert expr_copy.ndim == expr.ndim
-
-        #         for iaxis in range(expr.ndim):
-        #             axis_tags = self.axis_to_tags.get((expr, iaxis), [])
-        #             if len(axis_tags) == 0:
-        #                 print(f"failed to infer axis {iaxis} of array of type {type(expr)}.")
-        #                 print(f"{expr.non_equality_tags=}")
-        #             expr_copy = expr_copy.with_tagged_axis(
-        #                 iaxis, axis_tags)
-
-        #         # {{{ tag reduction descrs
-
-        #         if self.tag_corresponding_redn_descr:
-        #             if isinstance(expr, Einsum):
-        #                 assert isinstance(expr_copy, Einsum)
-        #                 for arg, access_descrs in zip(expr.args,
-        #                                               expr.access_descriptors,
-        #                                               strict=True):
-        #                     for iaxis, access_descr in enumerate(access_descrs):
-        #                         if isinstance(access_descr, EinsumReductionAxis):
-        #                             expr_copy = expr_copy.with_tagged_reduction(
-        #                                 access_descr,
-        #                                 self.axis_to_tags.get((arg, iaxis), [])
-        #                             )
-
-        #             if isinstance(expr, IndexLambda):
-        #                 assert isinstance(expr_copy, IndexLambda)
-        #                 try:
-        #                     hlo = index_lambda_to_high_level_op(expr)
-        #                 except UnknownIndexLambdaExpr:
-        #                     pass
-        #                 else:
-        #                     if isinstance(hlo, ReduceOp):
-        #                         for iaxis, redn_var in hlo.axes.items():
-        #                             expr_copy = expr_copy.with_tagged_reduction(
-        #                                 redn_var,
-        #                                 self.axis_to_tags.get((hlo.x, iaxis), [])
-        #                             )
-
-        #         # }}}
-
-        #         self._cache[key] = expr_copy
-        #         return expr_copy
-        key = self._cache.get_key(expr)
+        inputs = self._make_cache_inputs(expr)
         try:
-            return self._cache.retrieve(expr, key=key)
+            return self._cache_retrieve(inputs)
         except KeyError:
+            # Intentionally going to Mapper instead of super() to avoid
+            # double caching when subclasses of CachedMapper override rec,
+            # see https://github.com/inducer/pytato/pull/585
             result = Mapper.rec(self, expr)
             if not isinstance(
                     expr, AbstractResultWithNamedArrays | DistributedSendRefHolder):
                 assert isinstance(expr, Array)
                 # type-ignore reason: passed "ArrayOrNames"; expected "Array"
                 result = self._attach_tags(expr, result)  # type: ignore[arg-type]
-            return self._cache.add(expr, result, key=key)
+            return self._cache_add(inputs, result)
 
     def map_named_call_result(self, expr: NamedCallResult) -> Array:
         raise NotImplementedError(

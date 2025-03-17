@@ -30,6 +30,7 @@ from typing import (
     cast,
 )
 
+import islpy as isl
 from typing import (Tuple, List, Union, Callable, Any, Sequence, Dict,
                     Optional, Iterable, TypeVar, FrozenSet)
 from pytato.array import (Array, ShapeType, IndexLambda, SizeParam, ShapeComponent,
@@ -371,8 +372,10 @@ def are_shape_components_equal(
     if isinstance(dim1, INT_CLASSES) and isinstance(dim2, INT_CLASSES):
         return dim1 == dim2
 
+    from pytato.transform import Deduplicator
     dim1_minus_dim2 = dim1 - dim2
     assert isinstance(dim1_minus_dim2, Array)
+    dim1_minus_dim2 = Deduplicator()(dim1_minus_dim2)
 
     from pytato.transform import InputGatherer
     inputs = InputGatherer()(dim1_minus_dim2)
