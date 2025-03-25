@@ -469,7 +469,7 @@ class AxisTagAttacher(CopyMapper):
         # key = self._cache.get_key(expr)
         inputs = self._make_cache_inputs(expr)
         try:
-            return self._cache.retrieve(inputs)
+            return self._cache_retrieve(inputs)
         except KeyError:
             # Intentionally going to Mapper instead of super() to avoid
             # double caching when subclasses of CachedMapper override rec,
@@ -480,7 +480,7 @@ class AxisTagAttacher(CopyMapper):
                 assert isinstance(expr, Array)
                 # type-ignore reason: passed "ArrayOrNames"; expected "Array"
                 result = self._attach_tags(expr, result)  # type: ignore[arg-type]
-            return self._cache.add(inputs, result)
+            return self._cache_add(inputs, result)
 
     def map_named_call_result(self, expr: NamedCallResult) -> Array:
         raise NotImplementedError(
