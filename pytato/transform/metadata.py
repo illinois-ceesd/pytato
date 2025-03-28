@@ -465,6 +465,8 @@ class AxisTagAttacher(CopyMapper):
         return result
 
     def rec(self, expr: ArrayOrNames) -> ArrayOrNames:
+        # prod-pilot 03.13
+        # key = self._cache.get_key(expr)
         inputs = self._make_cache_inputs(expr)
         try:
             return self._cache_retrieve(inputs)

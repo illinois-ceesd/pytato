@@ -33,6 +33,8 @@ from typing_extensions import Self
 
 from loopy.tools import LoopyKeyBuilder
 from pymbolic.mapper.optimize import optimize_mapper
+from pytools import memoize_method
+from loopy.tools import LoopyKeyBuilder
 
 from pytato.array import (
     Array,
@@ -679,16 +681,13 @@ def get_num_tags_of_type(
 
 # {{{ PytatoKeyBuilder
 
-class PytatoKeyBuilder(LoopyKeyBuilder):
+
+class PytatoKeyBuilder(LoopyKeyBuilder):  # type: ignore[misc]
     """A custom :class:`pytools.persistent_dict.KeyBuilder` subclass
     for objects within :mod:`pytato`.
     """
-    # The types below aren't immutable in general, but in the context of
-    # pytato, they are used as such.
 
     def update_for_ndarray(self, key_hash: Any, key: Any) -> None:
-        import numpy as np
-        assert isinstance(key, np.ndarray)
         self.rec(key_hash, key.data.tobytes())
 
     def update_for_TaggableCLArray(self, key_hash: Any, key: Any) -> None:
@@ -699,10 +698,8 @@ class PytatoKeyBuilder(LoopyKeyBuilder):
         self.rec(key_hash, key.get())
 
     def update_for_Array(self, key_hash: Any, key: Any) -> None:
-        from pyopencl.array import Array
-        assert isinstance(key, Array)
+        # CL Array
         self.rec(key_hash, key.get())
-
 # }}}
 
 # vim: fdm=marker
