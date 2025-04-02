@@ -43,6 +43,7 @@ from typing import (
 
 import numpy as np
 from immutabledict import immutabledict
+from orderedsets import FrozenOrderedSet, OrderedSet
 from typing_extensions import Self
 
 from pymbolic.mapper.optimize import optimize_mapper
@@ -1523,6 +1524,7 @@ class CombineMapper(CachedMapper[ResultT, FunctionResultT, []]):
 
 # {{{ DependencyMapper
 
+# FIXME: Change to ordered sets (including R)
 class DependencyMapper(CombineMapper[R, Never]):
     """
     Maps a :class:`pytato.array.Array` to a :class:`frozenset` of
@@ -1601,6 +1603,7 @@ class DependencyMapper(CombineMapper[R, Never]):
 
 # {{{ SubsetDependencyMapper
 
+# FIXME: Change to ordered sets
 class SubsetDependencyMapper(DependencyMapper):
     """
     Mapper to combine the dependencies of an expression that are a subset of
@@ -1621,6 +1624,7 @@ class SubsetDependencyMapper(DependencyMapper):
 
 # {{{ InputGatherer
 
+# FIXME: Change to ordered sets
 class InputGatherer(
         CombineMapper[frozenset[InputArgumentBase], frozenset[InputArgumentBase]]):
     """
@@ -1672,6 +1676,7 @@ class InputGatherer(
 
 # {{{ precompute_subexpressions
 
+# FIXME: Change to ordered sets
 # FIXME: Think about what happens when subexpressions contain outlined functions
 class _PrecomputableSubexpressionGatherer(
         CombineMapper[frozenset[Array], frozenset[Array]]):
@@ -1802,6 +1807,7 @@ def precompute_subexpressions(
 
 # {{{ SizeParamGatherer
 
+# FIXME: Change to ordered sets
 class SizeParamGatherer(
         CombineMapper[frozenset[SizeParam], frozenset[SizeParam]]):
     """
@@ -2053,13 +2059,13 @@ class CachedWalkMapper(WalkMapper[P]):
 
     def __init__(
             self,
-            _visited_functions: set[VisitKeyT] | None = None
+            _visited_functions: OrderedSet[VisitKeyT] | None = None
             ) -> None:
         super().__init__()
-        self._visited_arrays_or_names: set[VisitKeyT] = set()
+        self._visited_arrays_or_names: OrderedSet[VisitKeyT] = OrderedSet()
 
-        self._visited_functions: set[VisitKeyT] = \
-            _visited_functions if _visited_functions is not None else set()
+        self._visited_functions: OrderedSet[VisitKeyT] = \
+            _visited_functions if _visited_functions is not None else OrderedSet()
 
     def get_cache_key(
             self, expr: ArrayOrNames, *args: P.args, **kwargs: P.kwargs
@@ -2110,7 +2116,7 @@ class TopoSortMapper(CachedWalkMapper[[]]):
 
     def __init__(
             self,
-            _visited_functions: set[VisitKeyT] | None = None) -> None:
+            _visited_functions: OrderedSet[VisitKeyT] | None = None) -> None:
         super().__init__(_visited_functions=_visited_functions)
         self.topological_order: list[Array] = []
 
@@ -2247,17 +2253,17 @@ def _materialize_if_mpms(expr: Array,
     """
     from functools import reduce
 
-    materialized_predecessors: frozenset[Array] = reduce(
-                                                    frozenset.union,
+    materialized_predecessors: FrozenOrderedSet[Array] = reduce(
+                                                    FrozenOrderedSet.union,
                                                     (pred.materialized_predecessors
                                                      for pred in predecessors),
-                                                    frozenset())
+                                                    FrozenOrderedSet())
     if nsuccessors > 1 and len(materialized_predecessors) > 1:
         if not expr.tags_of_type(ImplStored):
             new_expr = expr.tagged(ImplStored())
         else:
             new_expr = expr
-        return MPMSMaterializerAccumulator(frozenset([new_expr]), new_expr)
+        return MPMSMaterializerAccumulator(FrozenOrderedSet([new_expr]), new_expr)
     else:
         return MPMSMaterializerAccumulator(materialized_predecessors, expr)
 
@@ -2309,7 +2315,7 @@ class MPMSMaterializer(CachedMapper[MPMSMaterializerAccumulator, Never, []]):
 
     def _map_input_base(self, expr: InputArgumentBase
                         ) -> MPMSMaterializerAccumulator:
-        return MPMSMaterializerAccumulator(frozenset([expr]), expr)
+        return MPMSMaterializerAccumulator(FrozenOrderedSet([expr]), expr)
 
     map_placeholder = _map_input_base
     map_data_wrapper = _map_input_base
@@ -2327,7 +2333,9 @@ class MPMSMaterializer(CachedMapper[MPMSMaterializerAccumulator, Never, []]):
             for bnd_name, bnd in sorted(children_rec.items())})
 
         if (
-                frozenset(new_children.keys()) == frozenset(expr.bindings.keys())
+                (
+                    FrozenOrderedSet(new_children.keys())
+                    == FrozenOrderedSet(expr.bindings.keys()))
                 and all(
                     new_children[name] is expr.bindings[name]
                     for name in expr.bindings)):
@@ -2475,7 +2483,7 @@ class MPMSMaterializer(CachedMapper[MPMSMaterializerAccumulator, Never, []]):
 
     def map_loopy_call_result(self, expr: NamedArray) -> MPMSMaterializerAccumulator:
         # loopy call result is always materialized
-        return MPMSMaterializerAccumulator(frozenset([expr]), expr)
+        return MPMSMaterializerAccumulator(FrozenOrderedSet([expr]), expr)
 
     def map_distributed_send_ref_holder(self,
                                         expr: DistributedSendRefHolder
@@ -2500,7 +2508,7 @@ class MPMSMaterializer(CachedMapper[MPMSMaterializerAccumulator, Never, []]):
 
     def map_distributed_recv(self, expr: DistributedRecv
                              ) -> MPMSMaterializerAccumulator:
-        return MPMSMaterializerAccumulator(frozenset([expr]), expr)
+        return MPMSMaterializerAccumulator(FrozenOrderedSet([expr]), expr)
 
     def map_named_call_result(self, expr: NamedCallResult
                               ) -> MPMSMaterializerAccumulator:
@@ -2530,6 +2538,7 @@ def copy_dict_of_named_arrays(source_dict: DictOfNamedArrays,
     return DictOfNamedArrays(data, tags=source_dict.tags)
 
 
+# FIXME: Use ordered sets
 def get_dependencies(expr: DictOfNamedArrays) -> dict[str, frozenset[Array]]:
     """Returns the dependencies of each named array in *expr*.
     """
@@ -2624,6 +2633,7 @@ def materialize_with_mpms(expr: DictOfNamedArrays) -> DictOfNamedArrays:
 
 # {{{ UsersCollector
 
+# FIXME: Use ordered sets
 class UsersCollector(CachedMapper[None, Never, []]):
     """
     Maps a graph to a dictionary representation mapping a node to its users,
@@ -2765,6 +2775,7 @@ class UsersCollector(CachedMapper[None, Never, []]):
         self.rec(expr._container)
 
 
+# FIXME: Use ordered sets
 def get_users(expr: ArrayOrNames) -> dict[ArrayOrNames,
                                           set[ArrayOrNames]]:
     """
@@ -2779,6 +2790,7 @@ def get_users(expr: ArrayOrNames) -> dict[ArrayOrNames,
 
 # {{{ operations on graphs in dict form
 
+# FIXME: Use ordered sets
 def _recursively_get_all_users(
         direct_users: Mapping[ArrayOrNames, set[ArrayOrNames]],
         node: ArrayOrNames) -> frozenset[ArrayOrNames]:
@@ -2803,6 +2815,7 @@ def _recursively_get_all_users(
     return frozenset(result)
 
 
+# FIXME: Use ordered sets
 def rec_get_user_nodes(expr: ArrayOrNames,
                        node: ArrayOrNames,
                        ) -> frozenset[ArrayOrNames]:

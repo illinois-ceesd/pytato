@@ -44,12 +44,10 @@ from typing import (
     Callable,
     Collection,
     Dict,
-    FrozenSet,
     Generator,
     List,
     Never,
     Sequence,
-    Set,
     Tuple,
     cast,
 )
@@ -57,6 +55,7 @@ from typing_extensions import Self
 
 import attrs
 from immutabledict import immutabledict
+from orderedsets import FrozenOrderedSet, OrderedSet
 
 import pymbolic.primitives as prim
 from pytools import memoize_method, memoize_on_first_arg
@@ -244,12 +243,12 @@ class _UsedCallInputCollector(CachedWalkMapper[[]]):
             self,
             _fn_input_gatherers:
                 dict[FunctionDefinition, InputGatherer] | None = None,
-            _visited_functions: set[Any] | None = None
+            _visited_functions: OrderedSet[Any] | None = None
             ) -> None:
         if _fn_input_gatherers is None:
             _fn_input_gatherers = {}
 
-        self.call_to_used_inputs: dict[Call, set[Placeholder]] = {}
+        self.call_to_used_inputs: dict[Call, OrderedSet[Placeholder]] = {}
         self._fn_input_gatherers = _fn_input_gatherers
 
         super().__init__(_visited_functions=_visited_functions)
@@ -277,14 +276,14 @@ class _UsedCallInputCollector(CachedWalkMapper[[]]):
             input_gatherer = InputGatherer()
             self._fn_input_gatherers[call.function] = input_gatherer
 
-        used_inputs = self.call_to_used_inputs.setdefault(call, set())
+        used_inputs = self.call_to_used_inputs.setdefault(call, OrderedSet())
         used_inputs |= input_gatherer(call.function.returns[expr.name])
 
         super().map_named_call_result(expr)
 
 
 def _collect_used_call_inputs(
-        expr: ArrayOrNames) -> immutabledict[Call, frozenset[Placeholder]]:
+        expr: ArrayOrNames) -> immutabledict[Call, FrozenOrderedSet[Placeholder]]:
     """
     Returns a mapping from :class:`~pytato.function.Call` to the set of input
     :class:`~pt.array.Placeholder`\ s belonging to its function definition that are
@@ -296,7 +295,7 @@ def _collect_used_call_inputs(
     collector(expr)
 
     return immutabledict({
-        call: frozenset(inputs)
+        call: FrozenOrderedSet(inputs)
         for call, inputs in collector.call_to_used_inputs.items()})
 
 # }}}
@@ -311,7 +310,7 @@ class _UnusedCallBindingZeroer(CopyMapper):
     """
     def __init__(
             self,
-            call_to_used_inputs: Mapping[Call, frozenset[Placeholder]],
+            call_to_used_inputs: Mapping[Call, FrozenOrderedSet[Placeholder]],
             _cache: TransformMapperCache[ArrayOrNames, []] | None = None,
             _function_cache: TransformMapperCache[FunctionDefinition, []] | None = None
             ) -> None:
@@ -413,7 +412,7 @@ class CallSiteLocation:
 
 
 class CallSiteDependencyCollector(
-        CombineMapper[FrozenSet[CallSiteLocation], Never]):
+        CombineMapper[FrozenOrderedSet[CallSiteLocation], Never]):
     r"""
     Collects all the call sites in a :mod:`pytato` expression along with their
     interdependencies.
@@ -437,14 +436,14 @@ class CallSiteDependencyCollector(
             Dict[CallSiteLocation, CallSiteLocation] = {}
         super().__init__()
 
-    def combine(self, *args: FrozenSet[CallSiteLocation]
-                ) -> FrozenSet[CallSiteLocation]:
-        return reduce(lambda a, b: a | b, args, frozenset())
+    def combine(self, *args: FrozenOrderedSet[CallSiteLocation]
+                ) -> FrozenOrderedSet[CallSiteLocation]:
+        return reduce(lambda a, b: a | b, args, FrozenOrderedSet())
 
-    def map_size_param(self, expr: SizeParam) -> FrozenSet[CallSiteLocation]:
-        return frozenset()
+    def map_size_param(self, expr: SizeParam) -> FrozenOrderedSet[CallSiteLocation]:
+        return FrozenOrderedSet()
 
-    def map_call(self, expr: Call) -> FrozenSet[CallSiteLocation]:
+    def map_call(self, expr: Call) -> FrozenOrderedSet[CallSiteLocation]:
         cs = CallSiteLocation(expr, self.stack)
 
         new_mapper_for_fn = CallSiteDependencyCollector(stack=self.stack + (expr,))
@@ -459,7 +458,7 @@ class CallSiteDependencyCollector(
         self.call_site_to_dep_call_sites.update(
             new_mapper_for_fn.call_site_to_dep_call_sites)
 
-        return self.combine(frozenset([cs]), dependent_call_sites)
+        return self.combine(FrozenOrderedSet([cs]), dependent_call_sites)
 
 
 class _NamedCallResultReplacerPostConcatenate(CopyMapper):
@@ -577,7 +576,7 @@ class _InputConcatabilityGetterAcc:
 
     .. attribute:: seen_inputs
 
-        A :class:`frozenset` of all :class:`pytato.InputArgumentBase`
+        A :class:`FrozenOrderedSet` of all :class:`pytato.InputArgumentBase`
         predecessors of a node.
 
     .. attribute:: input_concatability
@@ -592,13 +591,13 @@ class _InputConcatabilityGetterAcc:
         concatenation cannot be performed along those axes for the mapped
         array.
     """
-    seen_inputs: FrozenSet[InputArgumentBase]
+    seen_inputs: FrozenOrderedSet[InputArgumentBase]
     input_concatability: Mapping[Concatenatability,
                                  Mapping[InputArgumentBase, Concatenatability]]
 
     def __post_init__(self) -> None:
         assert all(
-            frozenset(input_concat.keys()) == self.seen_inputs
+            FrozenOrderedSet(input_concat.keys()) == self.seen_inputs
             for input_concat in self.input_concatability.values())
 
     __attrs_post_init__ = __post_init__
@@ -732,10 +731,10 @@ def _combine_input_accs(
 
     input_concatabilities: Dict[Concatenatability, Mapping[InputArgumentBase,
                                                        Concatenatability]] = {}
-    seen_inputs: FrozenSet[InputArgumentBase] = reduce(
-        frozenset.union,
+    seen_inputs: FrozenOrderedSet[InputArgumentBase] = reduce(
+        FrozenOrderedSet.union,
         (operand_acc.seen_inputs for operand_acc in operand_accs),
-        frozenset())
+        FrozenOrderedSet())
 
     # The core logic here is to filter the iaxis in out_axis_to_operand_axes
     # so that all the operands agree on how the input arguments must be
@@ -831,18 +830,18 @@ def _combine_named_result_accs_simple(
     valid_concatenatabilities: List[FunctionConcatenability] = []
 
     input_args = reduce(
-        frozenset.union,
+        FrozenOrderedSet.union,
         [
             acc.seen_inputs
             for acc in named_result_accs.values()],
-        frozenset())
+        FrozenOrderedSet())
 
     candidate_concat_axes = reduce(
-        frozenset.union,
+        FrozenOrderedSet.union,
         [
-            frozenset(acc.input_concatability.keys())
+            FrozenOrderedSet(acc.input_concatability.keys())
             for acc in named_result_accs.values()],
-        frozenset())
+        FrozenOrderedSet())
 
     # print(f"{candidate_concat_axes=}")
 
@@ -946,7 +945,7 @@ class _InputConcatabilityGetter(
         input_concatenatability[ConcatableIfConstant()] = immutabledict(
             {expr: ConcatableIfConstant()})
 
-        return _InputConcatabilityGetterAcc(frozenset([expr]),
+        return _InputConcatabilityGetterAcc(FrozenOrderedSet([expr]),
                                             immutabledict(input_concatenatability))
 
     map_placeholder = _map_input_arg_base
@@ -1035,10 +1034,10 @@ class _InputConcatabilityGetter(
         valid_concatenatabilities = _get_valid_concatenatability_constraints_simple(
             expr._container.function)
 
-        expr_concat_possibilities = {
+        expr_concat_possibilities = FrozenOrderedSet(
             valid_concatenability.output_to_concatenatability[expr.name]
             for valid_concatenability in valid_concatenatabilities
-        }
+        )
 
         input_concatenatabilities: Dict[Concatenatability,
                                         Mapping[InputArgumentBase,
@@ -1046,7 +1045,7 @@ class _InputConcatabilityGetter(
         rec_bindings = {bnd_name: self.rec(binding)
                         for bnd_name, binding in expr._container.bindings.items()}
         callee_acc = self.rec(expr._container.function.returns[expr.name])
-        seen_inputs: Set[InputArgumentBase] = set()
+        seen_inputs: OrderedSet[InputArgumentBase] = OrderedSet()
 
         for seen_input in callee_acc.seen_inputs:
             if isinstance(seen_input, Placeholder):
@@ -1099,7 +1098,7 @@ class _InputConcatabilityGetter(
                 input_concatenatabilities[concat_possibility] = immutabledict(
                     caller_input_concatabilities)
 
-        return _InputConcatabilityGetterAcc(frozenset(seen_inputs),
+        return _InputConcatabilityGetterAcc(FrozenOrderedSet(seen_inputs),
                                             immutabledict(input_concatenatabilities))
 
     def map_loopy_call_result(
@@ -1154,11 +1153,11 @@ class _ConcatabilityCollector(CachedWalkMapper):
     def __init__(
             self,
             current_stack: Tuple[Call, ...],
-            _visited_functions: set[Any] | None = None
+            _visited_functions: OrderedSet[Any] | None = None
             ) -> None:
         self.ary_to_concatenatability: Dict[ArrayOnStackT, Concatenatability] = {}
         self.current_stack = current_stack
-        self.call_sites_on_hold: Set[Call] = set()
+        self.call_sites_on_hold: OrderedSet[Call] = OrderedSet()
         super().__init__(_visited_functions=_visited_functions)
 
     # type-ignore-reason: CachedWalkMaper takes variadic `*args, **kwargs`.
@@ -1293,7 +1292,7 @@ class _ConcatabilityCollector(CachedWalkMapper):
                 for named_result in expr.values()):
             self.call_sites_on_hold.add(expr)
         else:
-            self.call_sites_on_hold -= {expr}
+            self.call_sites_on_hold.remove(expr)
             # FIXME The code below bypasses caching of function definitions
             new_mapper = self.clone_with_new_call_on_stack(expr)
             for name, val_in_callee in expr.function.returns.items():
@@ -1890,7 +1889,7 @@ def _get_ary_to_concatenatabilities(call_sites: Sequence[Call],
 
 def _get_replacement_map_post_concatenating(
         call_sites: Sequence[Call],
-        used_call_results: frozenset(NamedCallResult),
+        used_call_results: FrozenOrderedSet(NamedCallResult),
         input_concatenator: _InputConcatenator,
         output_slicer: _OutputSlicer) -> Mapping[NamedCallResult, Array]:
     """
@@ -1940,21 +1939,21 @@ def _get_replacement_map_post_concatenating(
         # FIXME: We may be able to handle this without burdening the user
         # See https://github.com/inducer/pytato/issues/559
         from collections import defaultdict
-        param_to_used_calls = defaultdict(set)
+        param_to_used_calls = defaultdict(OrderedSet)
         for output_name in template_call_site.keys():
             for csite in call_sites:
                 call_result = csite[output_name]
                 if call_result in used_call_results:
                     ret = csite.function.returns[output_name]
                     used_params = (
-                        {
+                        OrderedSet(
                             expr.name
-                            for expr in InputGatherer()(ret)}
+                            for expr in InputGatherer()(ret))
                         & csite.function.parameters)
                     for name in used_params:
-                        param_to_used_calls[name] |= {csite}
+                        param_to_used_calls[name].add(csite)
         for name, used_calls in param_to_used_calls.items():
-            if used_calls != set(call_sites):
+            if used_calls != OrderedSet(call_sites):
                 from warnings import warn
                 warn(
                     f"DAG output does not depend on parameter '{name}' for some "
@@ -2065,13 +2064,13 @@ def concatenate_calls(expr: ArrayOrNames,
     call_site_collector = CallSiteDependencyCollector(stack=())
 
     all_call_sites = call_site_collector(expr)
-    filtered_call_sites = {cs
+    filtered_call_sites = FrozenOrderedSet(cs
                            for cs in all_call_sites
-                           if call_site_filter(cs)}
+                           if call_site_filter(cs))
 
-    function_ids = {
+    function_ids = FrozenOrderedSet(
         next(iter(cs.call.function.tags_of_type(FunctionIdentifier)))
-        for cs in filtered_call_sites}
+        for cs in filtered_call_sites)
 
     # Input concatenator needs to be set up outside of the loop in order to prevent
     # creating duplicates; probably not strictly necessary for output slicer
@@ -2087,9 +2086,9 @@ def concatenate_calls(expr: ArrayOrNames,
         call_site_to_dep_call_sites = \
             call_site_dep_collector.call_site_to_dep_call_sites
 
-        unbatched_call_sites: Set[CallSiteLocation] = {
+        unbatched_call_sites: OrderedSet[CallSiteLocation] = OrderedSet(
             cs for cs in call_site_to_dep_call_sites.keys()
-            if call_site_filter(cs) and fid in cs.call.function.tags}
+            if call_site_filter(cs) and fid in cs.call.function.tags)
 
         for cs in unbatched_call_sites:
             for ret in cs.call.function.returns.values():
@@ -2098,7 +2097,7 @@ def concatenate_calls(expr: ArrayOrNames,
                     raise NotImplementedError(
                         "Concatenation of nested calls is not yet supported.")
 
-        call_site_batches: List[FrozenSet[CallSiteLocation]] = []
+        call_site_batches: List[FrozenOrderedSet[CallSiteLocation]] = []
 
         replacement_map: Dict[
             Tuple[NamedCallResult, Tuple[Call, ...]],
@@ -2107,9 +2106,9 @@ def concatenate_calls(expr: ArrayOrNames,
         used_call_results = collect_nodes_of_type(result, NamedCallResult)
 
         while unbatched_call_sites:
-            ready_call_sites = frozenset({
+            ready_call_sites = FrozenOrderedSet(
                 cs for cs in unbatched_call_sites
-                if not call_site_to_dep_call_sites[cs] & unbatched_call_sites})
+                if not call_site_to_dep_call_sites[cs] & unbatched_call_sites)
 
             from mpi4py import MPI
             rank = MPI.COMM_WORLD.rank
@@ -2147,18 +2146,18 @@ def concatenate_calls(expr: ArrayOrNames,
             #         #         nnodes_other = get_num_nodes(cs.call.function.returns[name])
             #         #         print(f"{rank}:        {name=}, {nnodes_template=}, {nnodes_other=}")
 
-            similar_call_sites = frozenset({
+            similar_call_sites = FrozenOrderedSet(
                 cs for cs in ready_call_sites
                 if (
                     (
-                        frozenset(cs.call.function.returns.keys())
-                        == frozenset(template_fn.returns.keys()))
+                        FrozenOrderedSet(cs.call.function.returns.keys())
+                        == FrozenOrderedSet(template_fn.returns.keys()))
                     and all(
                         similarity_comparer(
                             cs.call.function.returns[name],
                             template_fn.returns[name])
                         for name in template_fn.returns)
-                    and cs.stack == template_call_site.stack)})
+                    and cs.stack == template_call_site.stack))
 
             # if fid.identifier == "_make_fluid_state":
             #     print(f"{rank}: {len(similar_call_sites)=}")
@@ -2166,18 +2165,19 @@ def concatenate_calls(expr: ArrayOrNames,
             if not similar_call_sites:
                 raise ValueError("Failed to find similar call sites to concatenate.")
 
-            def get_axis0_len(cs):
-                first_out_name = next(iter(cs.call.function.returns.keys()))
-                axis0_len = cs.call[first_out_name].shape[0]
-                assert all(
-                    cs.call[name].shape[0] == axis0_len
-                    for name in cs.call.function.returns)
-                return axis0_len
+            # def get_axis0_len(cs):
+            #     first_out_name = next(iter(cs.call.function.returns.keys()))
+            #     axis0_len = cs.call[first_out_name].shape[0]
+            #     assert all(
+            #         cs.call[name].shape[0] == axis0_len
+            #         for name in cs.call.function.returns)
+            #     return axis0_len
 
-            batch_call_sites = sorted(similar_call_sites, key=get_axis0_len)
+            # batch_call_sites = FrozenOrderedSet(sorted(similar_call_sites, key=get_axis0_len))
+            batch_call_sites = similar_call_sites
 
             call_site_batches.append(batch_call_sites)
-            unbatched_call_sites -= frozenset(batch_call_sites)
+            unbatched_call_sites -= batch_call_sites
 
         # FIXME: this doesn't work; need to create/execute batches one at a time,
         # then repeat the steps above to collect the updated call sites after
@@ -2218,7 +2218,7 @@ def concatenate_calls(expr: ArrayOrNames,
                     input_concatenator=input_concatenator,
                     output_slicer=output_slicer)
 
-            stack, = {cs.stack for cs in call_sites}
+            stack, = FrozenOrderedSet(cs.stack for cs in call_sites)
 
             replacement_map.update({
                 (old_expr, stack): new_expr

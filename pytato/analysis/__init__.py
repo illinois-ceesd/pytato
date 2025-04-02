@@ -28,7 +28,7 @@ THE SOFTWARE.
 
 from typing import TYPE_CHECKING, Any, Never
 
-from orderedsets import FrozenOrderedSet
+from orderedsets import FrozenOrderedSet, OrderedSet
 from typing_extensions import Self
 
 from loopy.tools import LoopyKeyBuilder
@@ -107,6 +107,7 @@ __doc__ = """
 
 # {{{ NUserCollector
 
+# FIXME: Use ordered sets
 class NUserCollector(Mapper[None, None, []]):
     """
     A :class:`pytato.transform.CachedWalkMapper` that records the number of
@@ -250,6 +251,7 @@ def get_nusers(outputs: Array | DictOfNamedArrays) -> Mapping[Array, int]:
 
 # {{{ is_einsum_similar_to_subscript
 
+# FIXME: Use ordered sets
 def _get_indices_from_input_subscript(subscript: str,
                                       is_output: bool,
                                       ) -> tuple[str, ...]:
@@ -475,7 +477,7 @@ class NodeCountMapper(CachedWalkMapper[[]]):
             self,
             count_duplicates: bool = False,
             traverse_functions: bool = True,
-            _visited_functions: set[Any] | None = None,
+            _visited_functions: OrderedSet[Any] | None = None,
             ) -> None:
         super().__init__(_visited_functions=_visited_functions)
 
@@ -612,7 +614,7 @@ class NodeMultiplicityMapper(CachedWalkMapper[[]]):
     def __init__(
             self,
             traverse_functions: bool = True,
-            _visited_functions: set[Any] | None = None) -> None:
+            _visited_functions: OrderedSet[Any] | None = None) -> None:
         super().__init__(_visited_functions=_visited_functions)
 
         self.traverse_functions = traverse_functions
@@ -677,7 +679,7 @@ class CallSiteCountMapper(CachedWalkMapper[[]]):
        The number of nodes.
     """
 
-    def __init__(self, _visited_functions: set[Any] | None = None) -> None:
+    def __init__(self, _visited_functions: OrderedSet[Any] | None = None) -> None:
         super().__init__(_visited_functions=_visited_functions)
         self.count = 0
 
@@ -719,6 +721,7 @@ def get_num_call_sites(outputs: Array | DictOfNamedArrays) -> int:
 
 # {{{ TagCountMapper
 
+# FIXME: Use ordered sets
 class TagCountMapper(CombineMapper[int, Never]):
     """
     Returns the number of nodes in a DAG that are tagged with all the tag types in
@@ -819,7 +822,7 @@ class NodeCollector(CachedWalkMapper[[]]):
         super().__init__()
         self.collect_func = collect_func
         self.traverse_functions = traverse_functions
-        self.nodes: set[NodeT] = set()
+        self.nodes: OrderedSet[NodeT] = OrderedSet()
 
     def get_cache_key(self, expr: ArrayOrNames) -> ArrayOrNames:
         return expr
@@ -854,7 +857,7 @@ class NodeCollector(CachedWalkMapper[[]]):
 
 def collect_nodes_of_type(
         outputs: Array | DictOfNamedArrays,
-        node_type: type[NodeT]) -> frozenset[NodeT]:
+        node_type: type[NodeT]) -> FrozenOrderedSet[NodeT]:
     """Returns the nodes that are instances of *node_type* in DAG *outputs*."""
     from pytato.codegen import normalize_outputs
     outputs = normalize_outputs(outputs)
@@ -865,11 +868,11 @@ def collect_nodes_of_type(
     nc = NodeCollector(collect_func)
     nc(outputs)
 
-    return frozenset(nc.nodes)
+    return FrozenOrderedSet(nc.nodes)
 
 
 def collect_materialized_nodes(
-        outputs: Array | DictOfNamedArrays) -> frozenset[NodeT]:
+        outputs: Array | DictOfNamedArrays) -> FrozenOrderedSet[NodeT]:
     from pytato.codegen import normalize_outputs
     outputs = normalize_outputs(outputs)
 
@@ -880,13 +883,14 @@ def collect_materialized_nodes(
     nc = NodeCollector(collect_func)
     nc(outputs)
 
-    return frozenset(nc.nodes)
+    return FrozenOrderedSet(nc.nodes)
 
 # }}}
 
 
 # {{{ DependencyTracer
 
+# FIXME: Use ordered sets
 class DependencyTracer(CombineMapper[frozenset[tuple[Array, ...]], Never]):
     """
     Maps a DAG and a node to a :class:`frozenset` of `tuple`\\ s of
