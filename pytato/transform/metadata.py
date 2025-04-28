@@ -344,8 +344,37 @@ class AxesTagsEquationCollector(Mapper[None, Never, []]):
         self.add_equations_using_index_lambda_version_of_expr(expr)
 
     def map_reshape(self, expr: Reshape) -> None:
+        """
+        Reshaping generally does not preserve the axis between its input and
+        output and so no constraints are enforced except when the
+        :class:`pytato.Reshape` has come from a :func:`pytato.expand_dims`.
+        """
+        # Cannot use add_equations_using_index_lambda_version_of_expr here because
+        # reshapes that represent a change in the meaning of an axis may produce
+        # index expressions that look like direct passthroughs (for example,
+        # reshaping an array of shape (m*n,) to (m, n) when n == 1).
+        # We also cannot preserve "unchanged" axes, because it may be unclear which
+        # axes those actually are. For example, when reshaping (m, n) -> (m, 1, n),
+        # we can't tell from the shape alone which, if any, axes are unchanged
+        # (unless made explicit using the ExpandedDimsReshape tag).
+        from pytato.tags import ExpandedDimsReshape
+
         self.rec(expr.array)
-        self.add_equations_using_index_lambda_version_of_expr(expr)
+
+        expand_dims_tags = expr.tags_of_type(ExpandedDimsReshape)
+
+        if expand_dims_tags:
+            expand_dims_tag, = expand_dims_tags
+            i_in_axis = 0
+            for i_out_axis in range(expr.ndim):
+                if i_out_axis not in expand_dims_tag.new_dims:
+                    self.record_equation(
+                        self.get_var_for_axis(expr.array, i_in_axis),
+                        self.get_var_for_axis(expr, i_out_axis)
+                    )
+                    i_in_axis += 1
+
+            assert i_in_axis == expr.array.ndim
 
     def map_einsum(self, expr: Einsum) -> None:
         for arg in expr.args:
